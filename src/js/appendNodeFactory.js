@@ -42,13 +42,13 @@ function appendNodeFactory(Node) {
 
     // TODO: consistent naming
 
+    dom.tdDrag = document.createElement('td');
+    var tdMenu = document.createElement('td');
+    dom.tdMenu = tdMenu;
     if (this.editable.field) {
       // a cell for the dragarea column
-      dom.tdDrag = document.createElement('td');
 
       // create context menu
-      var tdMenu = document.createElement('td');
-      dom.tdMenu = tdMenu;
       var menu = document.createElement('button');
       menu.className = 'contextmenu';
       menu.title = 'Click to open the actions menu (Ctrl+M)';

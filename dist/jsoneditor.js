@@ -24,7 +24,7 @@
  *
  * @author  Jos de Jong, <wjosdejong@gmail.com>
  * @version 4.2.0
- * @date    2015-05-14
+ * @date    2015-05-20
  */
 (function webpackUniversalModuleDefinition(root, factory) {
 	if(typeof exports === 'object' && typeof module === 'object')
@@ -82,7 +82,7 @@ return /******/ (function(modules) { // webpackBootstrap
 /* 0 */
 /***/ function(module, exports, __webpack_require__) {
 
-	var treemode = __webpack_require__(1);
+	var treemode = __webpack_require__(10);
 	var textmode = __webpack_require__(2);
 	var util = __webpack_require__(3);
 
@@ -350,750 +350,450 @@ return /******/ (function(modules) { // webpackBootstrap
 /* 1 */
 /***/ function(module, exports, __webpack_require__) {
 
-	var Highlighter = __webpack_require__(4);
-	var History = __webpack_require__(5);
-	var SearchBox = __webpack_require__(6);
-	var Node = __webpack_require__(7);
-	var modeswitcher = __webpack_require__(8);
 	var util = __webpack_require__(3);
 
-	// create a mixin with the functions for tree mode
-	var treemode = {};
-
 	/**
-	 * Create a tree editor
-	 * @param {Element} container    Container element
-	 * @param {Object}  [options]    Object with options. available options:
-	 *                               {String} mode      Editor mode. Available values:
-	 *                                                  'tree' (default), 'view',
-	 *                                                  and 'form'.
-	 *                               {Boolean} search   Enable search box.
-	 *                                                  True by default
-	 *                               {Boolean} history  Enable history (undo/redo).
-	 *                                                  True by default
-	 *                               {function} change  Callback method, triggered
-	 *                                                  on change of contents
-	 *                               {String} name      Field name for the root node.
-	 * @private
+	 * A context menu
+	 * @param {Object[]} items    Array containing the menu structure
+	 *                            TODO: describe structure
+	 * @param {Object} [options]  Object with options. Available options:
+	 *                            {function} close    Callback called when the
+	 *                                                context menu is being closed.
+	 * @constructor
 	 */
-	treemode.create = function (container, options) {
-	  if (!container) {
-	    throw new Error('No container element provided.');
-	  }
-	  this.container = container;
+	function ContextMenu (items, options) {
 	  this.dom = {};
-	  this.highlighter = new Highlighter();
-	  this.selection = undefined; // will hold the last input selection
 
-	  this._setOptions(options);
-
-	  if (this.options.history && this.options.mode !== 'view') {
-	    this.history = new History(this);
-	  }
-
-	  this._createFrame();
-	  this._createTable();
-	};
-
-	/**
-	 * Detach the editor from the DOM
-	 * @private
-	 */
-	treemode._delete = function () {
-	  if (this.frame && this.container && this.frame.parentNode == this.container) {
-	    this.container.removeChild(this.frame);
-	  }
-	};
-
-	/**
-	 * Initialize and set default options
-	 * @param {Object}  [options]    See description in constructor
-	 * @private
-	 */
-	treemode._setOptions = function (options) {
-	  this.options = {
-	    search: true,
-	    history: true,
-	    mode: 'tree',
-	    name: undefined   // field name of root node
-	  };
-
-	  // copy all options
-	  if (options) {
-	    for (var prop in options) {
-	      if (options.hasOwnProperty(prop)) {
-	        this.options[prop] = options[prop];
-	      }
-	    }
-	  }
-	};
-
-	// node currently being edited
-	var focusNode = undefined;
-
-	// dom having focus
-	var domFocus = null;
-
-	/**
-	 * Set JSON object in editor
-	 * @param {Object | undefined} json      JSON data
-	 * @param {String}             [name]    Optional field name for the root node.
-	 *                                       Can also be set using setName(name).
-	 */
-	treemode.set = function (json, name) {
-	  // adjust field name for root node
-	  if (name) {
-	    // TODO: deprecated since version 2.2.0. Cleanup some day.
-	    util.log('Warning: second parameter "name" is deprecated. ' +
-	        'Use setName(name) instead.');
-	    this.options.name = name;
-	  }
-
-	  // verify if json is valid JSON, ignore when a function
-	  if (json instanceof Function || (json === undefined)) {
-	    this.clear();
-	  }
-	  else {
-	    this.content.removeChild(this.table);  // Take the table offline
-
-	    // replace the root node
-	    var params = {
-	      'field': this.options.name,
-	      'value': json
-	    };
-	    var node = new Node(this, params);
-	    this._setRoot(node);
-
-	    // expand
-	    var recurse = false;
-	    this.node.expand(recurse);
-
-	    this.content.appendChild(this.table);  // Put the table online again
-	  }
-
-	  // TODO: maintain history, store last state and previous document
-	  if (this.history) {
-	    this.history.clear();
-	  }
-	};
-
-	/**
-	 * Get JSON object from editor
-	 * @return {Object | undefined} json
-	 */
-	treemode.get = function () {
-	  // remove focus from currently edited node
-	  if (focusNode) {
-	    focusNode.blur();
-	  }
-
-	  if (this.node) {
-	    return this.node.getValue();
-	  }
-	  else {
-	    return undefined;
-	  }
-	};
-
-	/**
-	 * Get the text contents of the editor
-	 * @return {String} jsonText
-	 */
-	treemode.getText = function() {
-	  return JSON.stringify(this.get());
-	};
-
-	/**
-	 * Set the text contents of the editor
-	 * @param {String} jsonText
-	 */
-	treemode.setText = function(jsonText) {
-	  this.set(util.parse(jsonText));
-	};
-
-	/**
-	 * Set a field name for the root node.
-	 * @param {String | undefined} name
-	 */
-	treemode.setName = function (name) {
-	  this.options.name = name;
-	  if (this.node) {
-	    this.node.updateField(this.options.name);
-	  }
-	};
-
-	/**
-	 * Get the field name for the root node.
-	 * @return {String | undefined} name
-	 */
-	treemode.getName = function () {
-	  return this.options.name;
-	};
-
-	/**
-	 * Set focus to the editor. Focus will be set to:
-	 * - the first editable field or value, or else
-	 * - to the expand button of the root node, or else
-	 * - to the context menu button of the root node, or else
-	 * - to the first button in the top menu
-	 */
-	treemode.focus = function () {
-	  var input = this.content.querySelector('[contenteditable=true]');
-	  if (input) {
-	    input.focus();
-	  }
-	  else if (this.node.dom.expand) {
-	    this.node.dom.expand.focus();
-	  }
-	  else if (this.node.dom.menu) {
-	    this.node.dom.menu.focus();
-	  }
-	  else {
-	    // focus to the first button in the menu
-	    input = this.frame.querySelector('button');
-	    if (input) {
-	      input.focus();
-	    }
-	  }
-	};
-
-	/**
-	 * Remove the root node from the editor
-	 */
-	treemode.clear = function () {
-	  if (this.node) {
-	    this.node.collapse();
-	    this.tbody.removeChild(this.node.getDom());
-	    delete this.node;
-	  }
-	};
-
-	/**
-	 * Set the root node for the json editor
-	 * @param {Node} node
-	 * @private
-	 */
-	treemode._setRoot = function (node) {
-	  this.clear();
-
-	  this.node = node;
-
-	  // append to the dom
-	  this.tbody.appendChild(node.getDom());
-	};
-
-	/**
-	 * Search text in all nodes
-	 * The nodes will be expanded when the text is found one of its childs,
-	 * else it will be collapsed. Searches are case insensitive.
-	 * @param {String} text
-	 * @return {Object[]} results  Array with nodes containing the search results
-	 *                             The result objects contains fields:
-	 *                             - {Node} node,
-	 *                             - {String} elem  the dom element name where
-	 *                                              the result is found ('field' or
-	 *                                              'value')
-	 */
-	treemode.search = function (text) {
-	  var results;
-	  if (this.node) {
-	    this.content.removeChild(this.table);  // Take the table offline
-	    results = this.node.search(text);
-	    this.content.appendChild(this.table);  // Put the table online again
-	  }
-	  else {
-	    results = [];
-	  }
-
-	  return results;
-	};
-
-	/**
-	 * Expand all nodes
-	 */
-	treemode.expandAll = function () {
-	  if (this.node) {
-	    this.content.removeChild(this.table);  // Take the table offline
-	    this.node.expand();
-	    this.content.appendChild(this.table);  // Put the table online again
-	  }
-	};
-
-	/**
-	 * Collapse all nodes
-	 */
-	treemode.collapseAll = function () {
-	  if (this.node) {
-	    this.content.removeChild(this.table);  // Take the table offline
-	    this.node.collapse();
-	    this.content.appendChild(this.table);  // Put the table online again
-	  }
-	};
-
-	/**
-	 * The method onChange is called whenever a field or value is changed, created,
-	 * deleted, duplicated, etc.
-	 * @param {String} action  Change action. Available values: "editField",
-	 *                         "editValue", "changeType", "appendNode",
-	 *                         "removeNode", "duplicateNode", "moveNode", "expand",
-	 *                         "collapse".
-	 * @param {Object} params  Object containing parameters describing the change.
-	 *                         The parameters in params depend on the action (for
-	 *                         example for "editValue" the Node, old value, and new
-	 *                         value are provided). params contains all information
-	 *                         needed to undo or redo the action.
-	 * @private
-	 */
-	treemode._onAction = function (action, params) {
-	  // add an action to the history
-	  if (this.history) {
-	    this.history.add(action, params);
-	  }
-
-	  // trigger the onChange callback
-	  if (this.options.change) {
-	    try {
-	      this.options.change();
-	    }
-	    catch (err) {
-	      util.log('Error in change callback: ', err);
-	    }
-	  }
-	};
-
-	/**
-	 * Start autoscrolling when given mouse position is above the top of the
-	 * editor contents, or below the bottom.
-	 * @param {Number} mouseY  Absolute mouse position in pixels
-	 */
-	treemode.startAutoScroll = function (mouseY) {
 	  var me = this;
-	  var content = this.content;
-	  var top = util.getAbsoluteTop(content);
-	  var height = content.clientHeight;
-	  var bottom = top + height;
-	  var margin = 24;
-	  var interval = 50; // ms
+	  var dom = this.dom;
+	  this.anchor = undefined;
+	  this.items = items;
+	  this.eventListeners = {};
+	  this.selection = undefined; // holds the selection before the menu was opened
+	  this.visibleSubmenu = undefined;
+	  this.onClose = options ? options.close : undefined;
 
-	  if ((mouseY < top + margin) && content.scrollTop > 0) {
-	    this.autoScrollStep = ((top + margin) - mouseY) / 3;
-	  }
-	  else if (mouseY > bottom - margin &&
-	      height + content.scrollTop < content.scrollHeight) {
-	    this.autoScrollStep = ((bottom - margin) - mouseY) / 3;
-	  }
-	  else {
-	    this.autoScrollStep = undefined;
-	  }
+	  // create a container element
+	  var menu = document.createElement('div');
+	  menu.className = 'jsoneditor-contextmenu';
+	  dom.menu = menu;
 
-	  if (this.autoScrollStep) {
-	    if (!this.autoScrollTimer) {
-	      this.autoScrollTimer = setInterval(function () {
-	        if (me.autoScrollStep) {
-	          content.scrollTop -= me.autoScrollStep;
-	        }
-	        else {
-	          me.stopAutoScroll();
-	        }
-	      }, interval);
-	    }
-	  }
-	  else {
-	    this.stopAutoScroll();
-	  }
-	};
+	  // create a list to hold the menu items
+	  var list = document.createElement('ul');
+	  list.className = 'menu';
+	  menu.appendChild(list);
+	  dom.list = list;
+	  dom.items = []; // list with all buttons
 
-	/**
-	 * Stop auto scrolling. Only applicable when scrolling
-	 */
-	treemode.stopAutoScroll = function () {
-	  if (this.autoScrollTimer) {
-	    clearTimeout(this.autoScrollTimer);
-	    delete this.autoScrollTimer;
-	  }
-	  if (this.autoScrollStep) {
-	    delete this.autoScrollStep;
-	  }
-	};
+	  // create a (non-visible) button to set the focus to the menu
+	  var focusButton = document.createElement('button');
+	  dom.focusButton = focusButton;
+	  var li = document.createElement('li');
+	  li.style.overflow = 'hidden';
+	  li.style.height = '0';
+	  li.appendChild(focusButton);
+	  list.appendChild(li);
 
-
-	/**
-	 * Set the focus to an element in the editor, set text selection, and
-	 * set scroll position.
-	 * @param {Object} selection  An object containing fields:
-	 *                            {Element | undefined} dom     The dom element
-	 *                                                          which has focus
-	 *                            {Range | TextRange} range     A text selection
-	 *                            {Number} scrollTop            Scroll position
-	 */
-	treemode.setSelection = function (selection) {
-	  if (!selection) {
-	    return;
-	  }
-
-	  if ('scrollTop' in selection && this.content) {
-	    // TODO: animated scroll
-	    this.content.scrollTop = selection.scrollTop;
-	  }
-	  if (selection.range) {
-	    util.setSelectionOffset(selection.range);
-	  }
-	  if (selection.dom) {
-	    selection.dom.focus();
-	  }
-	};
-
-	/**
-	 * Get the current focus
-	 * @return {Object} selection An object containing fields:
-	 *                            {Element | undefined} dom     The dom element
-	 *                                                          which has focus
-	 *                            {Range | TextRange} range     A text selection
-	 *                            {Number} scrollTop            Scroll position
-	 */
-	treemode.getSelection = function () {
-	  return {
-	    dom: domFocus,
-	    scrollTop: this.content ? this.content.scrollTop : 0,
-	    range: util.getSelectionOffset()
-	  };
-	};
-
-	/**
-	 * Adjust the scroll position such that given top position is shown at 1/4
-	 * of the window height.
-	 * @param {Number} top
-	 * @param {function(boolean)} [callback]   Callback, executed when animation is
-	 *                                         finished. The callback returns true
-	 *                                         when animation is finished, or false
-	 *                                         when not.
-	 */
-	treemode.scrollTo = function (top, callback) {
-	  var content = this.content;
-	  if (content) {
-	    var editor = this;
-	    // cancel any running animation
-	    if (editor.animateTimeout) {
-	      clearTimeout(editor.animateTimeout);
-	      delete editor.animateTimeout;
-	    }
-	    if (editor.animateCallback) {
-	      editor.animateCallback(false);
-	      delete editor.animateCallback;
-	    }
-
-	    // calculate final scroll position
-	    var height = content.clientHeight;
-	    var bottom = content.scrollHeight - height;
-	    var finalScrollTop = Math.min(Math.max(top - height / 4, 0), bottom);
-
-	    // animate towards the new scroll position
-	    var animate = function () {
-	      var scrollTop = content.scrollTop;
-	      var diff = (finalScrollTop - scrollTop);
-	      if (Math.abs(diff) > 3) {
-	        content.scrollTop += diff / 3;
-	        editor.animateCallback = callback;
-	        editor.animateTimeout = setTimeout(animate, 50);
+	  function createMenuItems (list, domItems, items) {
+	    items.forEach(function (item) {
+	      if (item.type == 'separator') {
+	        // create a separator
+	        var separator = document.createElement('div');
+	        separator.className = 'separator';
+	        li = document.createElement('li');
+	        li.appendChild(separator);
+	        list.appendChild(li);
 	      }
 	      else {
-	        // finished
-	        if (callback) {
-	          callback(true);
+	        var domItem = {};
+
+	        // create a menu item
+	        var li = document.createElement('li');
+	        list.appendChild(li);
+
+	        // create a button in the menu item
+	        var button = document.createElement('button');
+	        button.className = item.className;
+	        domItem.button = button;
+	        if (item.title) {
+	          button.title = item.title;
 	        }
-	        content.scrollTop = finalScrollTop;
-	        delete editor.animateTimeout;
-	        delete editor.animateCallback;
+	        if (item.click) {
+	          button.onclick = function () {
+	            me.hide();
+	            item.click();
+	          };
+	        }
+	        li.appendChild(button);
+
+	        // create the contents of the button
+	        if (item.submenu) {
+	          // add the icon to the button
+	          var divIcon = document.createElement('div');
+	          divIcon.className = 'icon';
+	          button.appendChild(divIcon);
+	          button.appendChild(document.createTextNode(item.text));
+
+	          var buttonSubmenu;
+	          if (item.click) {
+	            // submenu and a button with a click handler
+	            button.className += ' default';
+
+	            var buttonExpand = document.createElement('button');
+	            domItem.buttonExpand = buttonExpand;
+	            buttonExpand.className = 'expand';
+	            buttonExpand.innerHTML = '<div class="expand"></div>';
+	            li.appendChild(buttonExpand);
+	            if (item.submenuTitle) {
+	              buttonExpand.title = item.submenuTitle;
+	            }
+
+	            buttonSubmenu = buttonExpand;
+	          }
+	          else {
+	            // submenu and a button without a click handler
+	            var divExpand = document.createElement('div');
+	            divExpand.className = 'expand';
+	            button.appendChild(divExpand);
+
+	            buttonSubmenu = button;
+	          }
+
+	          // attach a handler to expand/collapse the submenu
+	          buttonSubmenu.onclick = function () {
+	            me._onExpandItem(domItem);
+	            buttonSubmenu.focus();
+	          };
+
+	          // create the submenu
+	          var domSubItems = [];
+	          domItem.subItems = domSubItems;
+	          var ul = document.createElement('ul');
+	          domItem.ul = ul;
+	          ul.className = 'menu';
+	          ul.style.height = '0';
+	          li.appendChild(ul);
+	          createMenuItems(ul, domSubItems, item.submenu);
+	        }
+	        else {
+	          // no submenu, just a button with clickhandler
+	          button.innerHTML = '<div class="icon"></div>' + item.text;
+	        }
+
+	        domItems.push(domItem);
 	      }
-	    };
-	    animate();
+	    });
+	  }
+	  createMenuItems(list, this.dom.items, items);
+
+	  // TODO: when the editor is small, show the submenu on the right instead of inline?
+
+	  // calculate the max height of the menu with one submenu expanded
+	  this.maxHeight = 0; // height in pixels
+	  items.forEach(function (item) {
+	    var height = (items.length + (item.submenu ? item.submenu.length : 0)) * 24;
+	    me.maxHeight = Math.max(me.maxHeight, height);
+	  });
+	}
+
+	/**
+	 * Get the currently visible buttons
+	 * @return {Array.<HTMLElement>} buttons
+	 * @private
+	 */
+	ContextMenu.prototype._getVisibleButtons = function () {
+	  var buttons = [];
+	  var me = this;
+	  this.dom.items.forEach(function (item) {
+	    buttons.push(item.button);
+	    if (item.buttonExpand) {
+	      buttons.push(item.buttonExpand);
+	    }
+	    if (item.subItems && item == me.expandedItem) {
+	      item.subItems.forEach(function (subItem) {
+	        buttons.push(subItem.button);
+	        if (subItem.buttonExpand) {
+	          buttons.push(subItem.buttonExpand);
+	        }
+	        // TODO: change to fully recursive method
+	      });
+	    }
+	  });
+
+	  return buttons;
+	};
+
+	// currently displayed context menu, a singleton. We may only have one visible context menu
+	ContextMenu.visibleMenu = undefined;
+
+	/**
+	 * Attach the menu to an anchor
+	 * @param {HTMLElement} anchor
+	 */
+	ContextMenu.prototype.show = function (anchor) {
+	  this.hide();
+
+	  // calculate whether the menu fits below the anchor
+	  var windowHeight = window.innerHeight,
+	      windowScroll = (window.pageYOffset || document.scrollTop || 0),
+	      windowBottom = windowHeight + windowScroll,
+	      anchorHeight = anchor.offsetHeight,
+	      menuHeight = this.maxHeight;
+
+	  // position the menu
+	  var left = util.getAbsoluteLeft(anchor);
+	  var top = util.getAbsoluteTop(anchor);
+	  if (top + anchorHeight + menuHeight < windowBottom) {
+	    // display the menu below the anchor
+	    this.dom.menu.style.left = left + 'px';
+	    this.dom.menu.style.top = (top + anchorHeight) + 'px';
+	    this.dom.menu.style.bottom = '';
 	  }
 	  else {
-	    if (callback) {
-	      callback(false);
+	    // display the menu above the anchor
+	    this.dom.menu.style.left = left + 'px';
+	    this.dom.menu.style.top = '';
+	    this.dom.menu.style.bottom = (windowHeight - top) + 'px';
+	  }
+
+	  // attach the menu to the document
+	  document.body.appendChild(this.dom.menu);
+
+	  // create and attach event listeners
+	  var me = this;
+	  var list = this.dom.list;
+	  this.eventListeners.mousedown = util.addEventListener(
+	      document, 'mousedown', function (event) {
+	        // hide menu on click outside of the menu
+	        var target = event.target;
+	        if ((target != list) && !me._isChildOf(target, list)) {
+	          me.hide();
+	          event.stopPropagation();
+	          event.preventDefault();
+	        }
+	      });
+	  this.eventListeners.mousewheel = util.addEventListener(
+	      document, 'mousewheel', function (event) {
+	        // block scrolling when context menu is visible
+	        event.stopPropagation();
+	        event.preventDefault();
+	      });
+	  this.eventListeners.keydown = util.addEventListener(
+	      document, 'keydown', function (event) {
+	        me._onKeyDown(event);
+	      });
+
+	  // move focus to the first button in the context menu
+	  this.selection = util.getSelection();
+	  this.anchor = anchor;
+	  setTimeout(function () {
+	    me.dom.focusButton.focus();
+	  }, 0);
+
+	  if (ContextMenu.visibleMenu) {
+	    ContextMenu.visibleMenu.hide();
+	  }
+	  ContextMenu.visibleMenu = this;
+	};
+
+	/**
+	 * Hide the context menu if visible
+	 */
+	ContextMenu.prototype.hide = function () {
+	  // remove the menu from the DOM
+	  if (this.dom.menu.parentNode) {
+	    this.dom.menu.parentNode.removeChild(this.dom.menu);
+	    if (this.onClose) {
+	      this.onClose();
 	    }
 	  }
-	};
 
-	/**
-	 * Create main frame
-	 * @private
-	 */
-	treemode._createFrame = function () {
-	  // create the frame
-	  this.frame = document.createElement('div');
-	  this.frame.className = 'jsoneditor';
-	  this.container.appendChild(this.frame);
-
-	  // create one global event listener to handle all events from all nodes
-	  var editor = this;
-	  function onEvent(event) {
-	    editor._onEvent(event);
-	  }
-	  this.frame.onclick = function (event) {
-	    var target = event.target;// || event.srcElement;
-
-	    onEvent(event);
-
-	    // prevent default submit action of buttons when editor is located
-	    // inside a form
-	    if (target.nodeName == 'BUTTON') {
-	      event.preventDefault();
-	    }
-	  };
-	  this.frame.oninput = onEvent;
-	  this.frame.onchange = onEvent;
-	  this.frame.onkeydown = onEvent;
-	  this.frame.onkeyup = onEvent;
-	  this.frame.oncut = onEvent;
-	  this.frame.onpaste = onEvent;
-	  this.frame.onmousedown = onEvent;
-	  this.frame.onmouseup = onEvent;
-	  this.frame.onmouseover = onEvent;
-	  this.frame.onmouseout = onEvent;
-	  // Note: focus and blur events do not propagate, therefore they defined
-	  // using an eventListener with useCapture=true
-	  // see http://www.quirksmode.org/blog/archives/2008/04/delegating_the.html
-	  util.addEventListener(this.frame, 'focus', onEvent, true);
-	  util.addEventListener(this.frame, 'blur', onEvent, true);
-	  this.frame.onfocusin = onEvent;  // for IE
-	  this.frame.onfocusout = onEvent; // for IE
-
-	  // create menu
-	  this.menu = document.createElement('div');
-	  this.menu.className = 'menu';
-	  this.frame.appendChild(this.menu);
-
-	  // create expand all button
-	  var expandAll = document.createElement('button');
-	  expandAll.className = 'expand-all';
-	  expandAll.title = 'Expand all fields';
-	  expandAll.onclick = function () {
-	    editor.expandAll();
-	  };
-	  this.menu.appendChild(expandAll);
-
-	  // create expand all button
-	  var collapseAll = document.createElement('button');
-	  collapseAll.title = 'Collapse all fields';
-	  collapseAll.className = 'collapse-all';
-	  collapseAll.onclick = function () {
-	    editor.collapseAll();
-	  };
-	  this.menu.appendChild(collapseAll);
-
-	  // create undo/redo buttons
-	  if (this.history) {
-	    // create undo button
-	    var undo = document.createElement('button');
-	    undo.className = 'undo separator';
-	    undo.title = 'Undo last action (Ctrl+Z)';
-	    undo.onclick = function () {
-	      editor._onUndo();
-	    };
-	    this.menu.appendChild(undo);
-	    this.dom.undo = undo;
-
-	    // create redo button
-	    var redo = document.createElement('button');
-	    redo.className = 'redo';
-	    redo.title = 'Redo (Ctrl+Shift+Z)';
-	    redo.onclick = function () {
-	      editor._onRedo();
-	    };
-	    this.menu.appendChild(redo);
-	    this.dom.redo = redo;
-
-	    // register handler for onchange of history
-	    this.history.onChange = function () {
-	      undo.disabled = !editor.history.canUndo();
-	      redo.disabled = !editor.history.canRedo();
-	    };
-	    this.history.onChange();
-	  }
-
-	  // create mode box
-	  if (this.options && this.options.modes && this.options.modes.length) {
-	    var modeBox = modeswitcher.create(this, this.options.modes, this.options.mode);
-	    this.menu.appendChild(modeBox);
-	    this.dom.modeBox = modeBox;
-	  }
-
-	  // create search box
-	  if (this.options.search) {
-	    this.searchBox = new SearchBox(this, this.menu);
-	  }
-	};
-
-	/**
-	 * Perform an undo action
-	 * @private
-	 */
-	treemode._onUndo = function () {
-	  if (this.history) {
-	    // undo last action
-	    this.history.undo();
-
-	    // trigger change callback
-	    if (this.options.change) {
-	      this.options.change();
+	  // remove all event listeners
+	  // all event listeners are supposed to be attached to document.
+	  for (var name in this.eventListeners) {
+	    if (this.eventListeners.hasOwnProperty(name)) {
+	      var fn = this.eventListeners[name];
+	      if (fn) {
+	        util.removeEventListener(document, name, fn);
+	      }
+	      delete this.eventListeners[name];
 	    }
 	  }
+
+	  if (ContextMenu.visibleMenu == this) {
+	    ContextMenu.visibleMenu = undefined;
+	  }
 	};
 
 	/**
-	 * Perform a redo action
+	 * Expand a submenu
+	 * Any currently expanded submenu will be hided.
+	 * @param {Object} domItem
 	 * @private
 	 */
-	treemode._onRedo = function () {
-	  if (this.history) {
-	    // redo last action
-	    this.history.redo();
+	ContextMenu.prototype._onExpandItem = function (domItem) {
+	  var me = this;
+	  var alreadyVisible = (domItem == this.expandedItem);
 
-	    // trigger change callback
-	    if (this.options.change) {
-	      this.options.change();
-	    }
+	  // hide the currently visible submenu
+	  var expandedItem = this.expandedItem;
+	  if (expandedItem) {
+	    //var ul = expandedItem.ul;
+	    expandedItem.ul.style.height = '0';
+	    expandedItem.ul.style.padding = '';
+	    setTimeout(function () {
+	      if (me.expandedItem != expandedItem) {
+	        expandedItem.ul.style.display = '';
+	        util.removeClassName(expandedItem.ul.parentNode, 'selected');
+	      }
+	    }, 300); // timeout duration must match the css transition duration
+	    this.expandedItem = undefined;
+	  }
+
+	  if (!alreadyVisible) {
+	    var ul = domItem.ul;
+	    ul.style.display = 'block';
+	    var height = ul.clientHeight; // force a reflow in Firefox
+	    setTimeout(function () {
+	      if (me.expandedItem == domItem) {
+	        ul.style.height = (ul.childNodes.length * 24) + 'px';
+	        ul.style.padding = '5px 10px';
+	      }
+	    }, 0);
+	    util.addClassName(ul.parentNode, 'selected');
+	    this.expandedItem = domItem;
 	  }
 	};
 
 	/**
-	 * Event handler
-	 * @param event
-	 * @private
-	 */
-	treemode._onEvent = function (event) {
-	  var target = event.target;
-
-	  if (event.type == 'keydown') {
-	    this._onKeyDown(event);
-	  }
-
-	  if (event.type == 'focus') {
-	    domFocus = target;
-	  }
-
-	  var node = Node.getNodeFromTarget(target);
-	  if (node) {
-	    node.onEvent(event);
-	  }
-	};
-
-	/**
-	 * Event handler for keydown. Handles shortcut keys
+	 * Handle onkeydown event
 	 * @param {Event} event
 	 * @private
 	 */
-	treemode._onKeyDown = function (event) {
-	  var keynum = event.which || event.keyCode;
-	  var ctrlKey = event.ctrlKey;
-	  var shiftKey = event.shiftKey;
+	ContextMenu.prototype._onKeyDown = function (event) {
+	  var target = event.target;
+	  var keynum = event.which;
 	  var handled = false;
+	  var buttons, targetIndex, prevButton, nextButton;
 
-	  if (keynum == 9) { // Tab or Shift+Tab
-	    setTimeout(function () {
-	      // select all text when moving focus to an editable div
-	      util.selectContentEditable(domFocus);
-	    }, 0);
-	  }
+	  if (keynum == 27) { // ESC
+	    // hide the menu on ESC key
 
-	  if (this.searchBox) {
-	    if (ctrlKey && keynum == 70) { // Ctrl+F
-	      this.searchBox.dom.search.focus();
-	      this.searchBox.dom.search.select();
-	      handled = true;
+	    // restore previous selection and focus
+	    if (this.selection) {
+	      util.setSelection(this.selection);
 	    }
-	    else if (keynum == 114 || (ctrlKey && keynum == 71)) { // F3 or Ctrl+G
-	      var focus = true;
-	      if (!shiftKey) {
-	        // select next search result (F3 or Ctrl+G)
-	        this.searchBox.next(focus);
+	    if (this.anchor) {
+	      this.anchor.focus();
+	    }
+
+	    this.hide();
+
+	    handled = true;
+	  }
+	  else if (keynum == 9) { // Tab
+	    if (!event.shiftKey) { // Tab
+	      buttons = this._getVisibleButtons();
+	      targetIndex = buttons.indexOf(target);
+	      if (targetIndex == buttons.length - 1) {
+	        // move to first button
+	        buttons[0].focus();
+	        handled = true;
 	      }
-	      else {
-	        // select previous search result (Shift+F3 or Ctrl+Shift+G)
-	        this.searchBox.previous(focus);
+	    }
+	    else { // Shift+Tab
+	      buttons = this._getVisibleButtons();
+	      targetIndex = buttons.indexOf(target);
+	      if (targetIndex == 0) {
+	        // move to last button
+	        buttons[buttons.length - 1].focus();
+	        handled = true;
 	      }
-
-	      handled = true;
 	    }
 	  }
-
-	  if (this.history) {
-	    if (ctrlKey && !shiftKey && keynum == 90) { // Ctrl+Z
-	      // undo
-	      this._onUndo();
-	      handled = true;
+	  else if (keynum == 37) { // Arrow Left
+	    if (target.className == 'expand') {
+	      buttons = this._getVisibleButtons();
+	      targetIndex = buttons.indexOf(target);
+	      prevButton = buttons[targetIndex - 1];
+	      if (prevButton) {
+	        prevButton.focus();
+	      }
 	    }
-	    else if (ctrlKey && shiftKey && keynum == 90) { // Ctrl+Shift+Z
-	      // redo
-	      this._onRedo();
-	      handled = true;
-	    }
+	    handled = true;
 	  }
+	  else if (keynum == 38) { // Arrow Up
+	    buttons = this._getVisibleButtons();
+	    targetIndex = buttons.indexOf(target);
+	    prevButton = buttons[targetIndex - 1];
+	    if (prevButton && prevButton.className == 'expand') {
+	      // skip expand button
+	      prevButton = buttons[targetIndex - 2];
+	    }
+	    if (!prevButton) {
+	      // move to last button
+	      prevButton = buttons[buttons.length - 1];
+	    }
+	    if (prevButton) {
+	      prevButton.focus();
+	    }
+	    handled = true;
+	  }
+	  else if (keynum == 39) { // Arrow Right
+	    buttons = this._getVisibleButtons();
+	    targetIndex = buttons.indexOf(target);
+	    nextButton = buttons[targetIndex + 1];
+	    if (nextButton && nextButton.className == 'expand') {
+	      nextButton.focus();
+	    }
+	    handled = true;
+	  }
+	  else if (keynum == 40) { // Arrow Down
+	    buttons = this._getVisibleButtons();
+	    targetIndex = buttons.indexOf(target);
+	    nextButton = buttons[targetIndex + 1];
+	    if (nextButton && nextButton.className == 'expand') {
+	      // skip expand button
+	      nextButton = buttons[targetIndex + 2];
+	    }
+	    if (!nextButton) {
+	      // move to first button
+	      nextButton = buttons[0];
+	    }
+	    if (nextButton) {
+	      nextButton.focus();
+	      handled = true;
+	    }
+	    handled = true;
+	  }
+	  // TODO: arrow left and right
 
 	  if (handled) {
-	    event.preventDefault();
 	    event.stopPropagation();
+	    event.preventDefault();
 	  }
 	};
 
 	/**
-	 * Create main table
-	 * @private
+	 * Test if an element is a child of a parent element.
+	 * @param {Element} child
+	 * @param {Element} parent
+	 * @return {boolean} isChild
 	 */
-	treemode._createTable = function () {
-	  var contentOuter = document.createElement('div');
-	  contentOuter.className = 'outer';
-	  this.contentOuter = contentOuter;
-
-	  this.content = document.createElement('div');
-	  this.content.className = 'tree';
-	  contentOuter.appendChild(this.content);
-
-	  this.table = document.createElement('table');
-	  this.table.className = 'tree';
-	  this.content.appendChild(this.table);
-
-	  // create colgroup where the first two columns don't have a fixed
-	  // width, and the edit columns do have a fixed width
-	  var col;
-	  this.colgroupContent = document.createElement('colgroup');
-	  if (this.options.mode === 'tree') {
-	    col = document.createElement('col');
-	    col.width = "24px";
-	    this.colgroupContent.appendChild(col);
+	ContextMenu.prototype._isChildOf = function (child, parent) {
+	  var e = child.parentNode;
+	  while (e) {
+	    if (e == parent) {
+	      return true;
+	    }
+	    e = e.parentNode;
 	  }
-	  col = document.createElement('col');
-	  col.width = "24px";
-	  this.colgroupContent.appendChild(col);
-	  col = document.createElement('col');
-	  this.colgroupContent.appendChild(col);
-	  this.table.appendChild(this.colgroupContent);
 
-	  this.tbody = document.createElement('tbody');
-	  this.table.appendChild(this.tbody);
-
-	  this.frame.appendChild(contentOuter);
+	  return false;
 	};
 
-	// define modes
-	module.exports = [
-	  {
-	    mode: 'tree',
-	    mixin: treemode,
-	    data: 'json'
-	  },
-	  {
-	    mode: 'view',
-	    mixin: treemode,
-	    data: 'json'
-	  },
-	  {
-	    mode: 'form',
-	    mixin: treemode,
-	    data: 'json'
-	  }
-	];
+	module.exports = ContextMenu;
+
 
 /***/ },
 /* 2 */
@@ -2078,619 +1778,7 @@ return /******/ (function(modules) { // webpackBootstrap
 /* 4 */
 /***/ function(module, exports, __webpack_require__) {
 
-	/**
-	 * The highlighter can highlight/unhighlight a node, and
-	 * animate the visibility of a context menu.
-	 * @constructor Highlighter
-	 */
-	function Highlighter () {
-	  this.locked = false;
-	}
-
-	/**
-	 * Hightlight given node and its childs
-	 * @param {Node} node
-	 */
-	Highlighter.prototype.highlight = function (node) {
-	  if (this.locked) {
-	    return;
-	  }
-
-	  if (this.node != node) {
-	    // unhighlight current node
-	    if (this.node) {
-	      this.node.setHighlight(false);
-	    }
-
-	    // highlight new node
-	    this.node = node;
-	    this.node.setHighlight(true);
-	  }
-
-	  // cancel any current timeout
-	  this._cancelUnhighlight();
-	};
-
-	/**
-	 * Unhighlight currently highlighted node.
-	 * Will be done after a delay
-	 */
-	Highlighter.prototype.unhighlight = function () {
-	  if (this.locked) {
-	    return;
-	  }
-
-	  var me = this;
-	  if (this.node) {
-	    this._cancelUnhighlight();
-
-	    // do the unhighlighting after a small delay, to prevent re-highlighting
-	    // the same node when moving from the drag-icon to the contextmenu-icon
-	    // or vice versa.
-	    this.unhighlightTimer = setTimeout(function () {
-	      me.node.setHighlight(false);
-	      me.node = undefined;
-	      me.unhighlightTimer = undefined;
-	    }, 0);
-	  }
-	};
-
-	/**
-	 * Cancel an unhighlight action (if before the timeout of the unhighlight action)
-	 * @private
-	 */
-	Highlighter.prototype._cancelUnhighlight = function () {
-	  if (this.unhighlightTimer) {
-	    clearTimeout(this.unhighlightTimer);
-	    this.unhighlightTimer = undefined;
-	  }
-	};
-
-	/**
-	 * Lock highlighting or unhighlighting nodes.
-	 * methods highlight and unhighlight do not work while locked.
-	 */
-	Highlighter.prototype.lock = function () {
-	  this.locked = true;
-	};
-
-	/**
-	 * Unlock highlighting or unhighlighting nodes
-	 */
-	Highlighter.prototype.unlock = function () {
-	  this.locked = false;
-	};
-
-	module.exports = Highlighter;
-
-
-/***/ },
-/* 5 */
-/***/ function(module, exports, __webpack_require__) {
-
-	var util = __webpack_require__(3);
-
-	/**
-	 * @constructor History
-	 * Store action history, enables undo and redo
-	 * @param {JSONEditor} editor
-	 */
-	function History (editor) {
-	  this.editor = editor;
-	  this.clear();
-
-	  // map with all supported actions
-	  this.actions = {
-	    'editField': {
-	      'undo': function (params) {
-	        params.node.updateField(params.oldValue);
-	      },
-	      'redo': function (params) {
-	        params.node.updateField(params.newValue);
-	      }
-	    },
-	    'editValue': {
-	      'undo': function (params) {
-	        params.node.updateValue(params.oldValue);
-	      },
-	      'redo': function (params) {
-	        params.node.updateValue(params.newValue);
-	      }
-	    },
-	    'appendNode': {
-	      'undo': function (params) {
-	        params.parent.removeChild(params.node);
-	      },
-	      'redo': function (params) {
-	        params.parent.appendChild(params.node);
-	      }
-	    },
-	    'insertBeforeNode': {
-	      'undo': function (params) {
-	        params.parent.removeChild(params.node);
-	      },
-	      'redo': function (params) {
-	        params.parent.insertBefore(params.node, params.beforeNode);
-	      }
-	    },
-	    'insertAfterNode': {
-	      'undo': function (params) {
-	        params.parent.removeChild(params.node);
-	      },
-	      'redo': function (params) {
-	        params.parent.insertAfter(params.node, params.afterNode);
-	      }
-	    },
-	    'removeNode': {
-	      'undo': function (params) {
-	        var parent = params.parent;
-	        var beforeNode = parent.childs[params.index] || parent.append;
-	        parent.insertBefore(params.node, beforeNode);
-	      },
-	      'redo': function (params) {
-	        params.parent.removeChild(params.node);
-	      }
-	    },
-	    'duplicateNode': {
-	      'undo': function (params) {
-	        params.parent.removeChild(params.clone);
-	      },
-	      'redo': function (params) {
-	        params.parent.insertAfter(params.clone, params.node);
-	      }
-	    },
-	    'changeType': {
-	      'undo': function (params) {
-	        params.node.changeType(params.oldType);
-	      },
-	      'redo': function (params) {
-	        params.node.changeType(params.newType);
-	      }
-	    },
-	    'moveNode': {
-	      'undo': function (params) {
-	        params.startParent.moveTo(params.node, params.startIndex);
-	      },
-	      'redo': function (params) {
-	        params.endParent.moveTo(params.node, params.endIndex);
-	      }
-	    },
-	    'sort': {
-	      'undo': function (params) {
-	        var node = params.node;
-	        node.hideChilds();
-	        node.sort = params.oldSort;
-	        node.childs = params.oldChilds;
-	        node.showChilds();
-	      },
-	      'redo': function (params) {
-	        var node = params.node;
-	        node.hideChilds();
-	        node.sort = params.newSort;
-	        node.childs = params.newChilds;
-	        node.showChilds();
-	      }
-	    }
-
-	    // TODO: restore the original caret position and selection with each undo
-	    // TODO: implement history for actions "expand", "collapse", "scroll", "setDocument"
-	  };
-	}
-
-	/**
-	 * The method onChange is executed when the History is changed, and can
-	 * be overloaded.
-	 */
-	History.prototype.onChange = function () {};
-
-	/**
-	 * Add a new action to the history
-	 * @param {String} action  The executed action. Available actions: "editField",
-	 *                         "editValue", "changeType", "appendNode",
-	 *                         "removeNode", "duplicateNode", "moveNode"
-	 * @param {Object} params  Object containing parameters describing the change.
-	 *                         The parameters in params depend on the action (for
-	 *                         example for "editValue" the Node, old value, and new
-	 *                         value are provided). params contains all information
-	 *                         needed to undo or redo the action.
-	 */
-	History.prototype.add = function (action, params) {
-	  this.index++;
-	  this.history[this.index] = {
-	    'action': action,
-	    'params': params,
-	    'timestamp': new Date()
-	  };
-
-	  // remove redo actions which are invalid now
-	  if (this.index < this.history.length - 1) {
-	    this.history.splice(this.index + 1, this.history.length - this.index - 1);
-	  }
-
-	  // fire onchange event
-	  this.onChange();
-	};
-
-	/**
-	 * Clear history
-	 */
-	History.prototype.clear = function () {
-	  this.history = [];
-	  this.index = -1;
-
-	  // fire onchange event
-	  this.onChange();
-	};
-
-	/**
-	 * Check if there is an action available for undo
-	 * @return {Boolean} canUndo
-	 */
-	History.prototype.canUndo = function () {
-	  return (this.index >= 0);
-	};
-
-	/**
-	 * Check if there is an action available for redo
-	 * @return {Boolean} canRedo
-	 */
-	History.prototype.canRedo = function () {
-	  return (this.index < this.history.length - 1);
-	};
-
-	/**
-	 * Undo the last action
-	 */
-	History.prototype.undo = function () {
-	  if (this.canUndo()) {
-	    var obj = this.history[this.index];
-	    if (obj) {
-	      var action = this.actions[obj.action];
-	      if (action && action.undo) {
-	        action.undo(obj.params);
-	        if (obj.params.oldSelection) {
-	          this.editor.setSelection(obj.params.oldSelection);
-	        }
-	      }
-	      else {
-	        util.log('Error: unknown action "' + obj.action + '"');
-	      }
-	    }
-	    this.index--;
-
-	    // fire onchange event
-	    this.onChange();
-	  }
-	};
-
-	/**
-	 * Redo the last action
-	 */
-	History.prototype.redo = function () {
-	  if (this.canRedo()) {
-	    this.index++;
-
-	    var obj = this.history[this.index];
-	    if (obj) {
-	      var action = this.actions[obj.action];
-	      if (action && action.redo) {
-	        action.redo(obj.params);
-	        if (obj.params.newSelection) {
-	          this.editor.setSelection(obj.params.newSelection);
-	        }
-	      }
-	      else {
-	        util.log('Error: unknown action "' + obj.action + '"');
-	      }
-	    }
-
-	    // fire onchange event
-	    this.onChange();
-	  }
-	};
-
-	module.exports = History;
-
-
-/***/ },
-/* 6 */
-/***/ function(module, exports, __webpack_require__) {
-
-	/**
-	 * @constructor SearchBox
-	 * Create a search box in given HTML container
-	 * @param {JSONEditor} editor    The JSON Editor to attach to
-	 * @param {Element} container               HTML container element of where to
-	 *                                          create the search box
-	 */
-	function SearchBox (editor, container) {
-	  var searchBox = this;
-
-	  this.editor = editor;
-	  this.timeout = undefined;
-	  this.delay = 200; // ms
-	  this.lastText = undefined;
-
-	  this.dom = {};
-	  this.dom.container = container;
-
-	  var table = document.createElement('table');
-	  this.dom.table = table;
-	  table.className = 'search';
-	  container.appendChild(table);
-	  var tbody = document.createElement('tbody');
-	  this.dom.tbody = tbody;
-	  table.appendChild(tbody);
-	  var tr = document.createElement('tr');
-	  tbody.appendChild(tr);
-
-	  var td = document.createElement('td');
-	  tr.appendChild(td);
-	  var results = document.createElement('div');
-	  this.dom.results = results;
-	  results.className = 'results';
-	  td.appendChild(results);
-
-	  td = document.createElement('td');
-	  tr.appendChild(td);
-	  var divInput = document.createElement('div');
-	  this.dom.input = divInput;
-	  divInput.className = 'frame';
-	  divInput.title = 'Search fields and values';
-	  td.appendChild(divInput);
-
-	  // table to contain the text input and search button
-	  var tableInput = document.createElement('table');
-	  divInput.appendChild(tableInput);
-	  var tbodySearch = document.createElement('tbody');
-	  tableInput.appendChild(tbodySearch);
-	  tr = document.createElement('tr');
-	  tbodySearch.appendChild(tr);
-
-	  var refreshSearch = document.createElement('button');
-	  refreshSearch.className = 'refresh';
-	  td = document.createElement('td');
-	  td.appendChild(refreshSearch);
-	  tr.appendChild(td);
-
-	  var search = document.createElement('input');
-	  this.dom.search = search;
-	  search.oninput = function (event) {
-	    searchBox._onDelayedSearch(event);
-	  };
-	  search.onchange = function (event) { // For IE 9
-	    searchBox._onSearch(event);
-	  };
-	  search.onkeydown = function (event) {
-	    searchBox._onKeyDown(event);
-	  };
-	  search.onkeyup = function (event) {
-	    searchBox._onKeyUp(event);
-	  };
-	  refreshSearch.onclick = function (event) {
-	    search.select();
-	  };
-
-	  // TODO: ESC in FF restores the last input, is a FF bug, https://bugzilla.mozilla.org/show_bug.cgi?id=598819
-	  td = document.createElement('td');
-	  td.appendChild(search);
-	  tr.appendChild(td);
-
-	  var searchNext = document.createElement('button');
-	  searchNext.title = 'Next result (Enter)';
-	  searchNext.className = 'next';
-	  searchNext.onclick = function () {
-	    searchBox.next();
-	  };
-	  td = document.createElement('td');
-	  td.appendChild(searchNext);
-	  tr.appendChild(td);
-
-	  var searchPrevious = document.createElement('button');
-	  searchPrevious.title = 'Previous result (Shift+Enter)';
-	  searchPrevious.className = 'previous';
-	  searchPrevious.onclick = function () {
-	    searchBox.previous();
-	  };
-	  td = document.createElement('td');
-	  td.appendChild(searchPrevious);
-	  tr.appendChild(td);
-	}
-
-	/**
-	 * Go to the next search result
-	 * @param {boolean} [focus]   If true, focus will be set to the next result
-	 *                            focus is false by default.
-	 */
-	SearchBox.prototype.next = function(focus) {
-	  if (this.results != undefined) {
-	    var index = (this.resultIndex != undefined) ? this.resultIndex + 1 : 0;
-	    if (index > this.results.length - 1) {
-	      index = 0;
-	    }
-	    this._setActiveResult(index, focus);
-	  }
-	};
-
-	/**
-	 * Go to the prevous search result
-	 * @param {boolean} [focus]   If true, focus will be set to the next result
-	 *                            focus is false by default.
-	 */
-	SearchBox.prototype.previous = function(focus) {
-	  if (this.results != undefined) {
-	    var max = this.results.length - 1;
-	    var index = (this.resultIndex != undefined) ? this.resultIndex - 1 : max;
-	    if (index < 0) {
-	      index = max;
-	    }
-	    this._setActiveResult(index, focus);
-	  }
-	};
-
-	/**
-	 * Set new value for the current active result
-	 * @param {Number} index
-	 * @param {boolean} [focus]   If true, focus will be set to the next result.
-	 *                            focus is false by default.
-	 * @private
-	 */
-	SearchBox.prototype._setActiveResult = function(index, focus) {
-	  // de-activate current active result
-	  if (this.activeResult) {
-	    var prevNode = this.activeResult.node;
-	    var prevElem = this.activeResult.elem;
-	    if (prevElem == 'field') {
-	      delete prevNode.searchFieldActive;
-	    }
-	    else {
-	      delete prevNode.searchValueActive;
-	    }
-	    prevNode.updateDom();
-	  }
-
-	  if (!this.results || !this.results[index]) {
-	    // out of range, set to undefined
-	    this.resultIndex = undefined;
-	    this.activeResult = undefined;
-	    return;
-	  }
-
-	  this.resultIndex = index;
-
-	  // set new node active
-	  var node = this.results[this.resultIndex].node;
-	  var elem = this.results[this.resultIndex].elem;
-	  if (elem == 'field') {
-	    node.searchFieldActive = true;
-	  }
-	  else {
-	    node.searchValueActive = true;
-	  }
-	  this.activeResult = this.results[this.resultIndex];
-	  node.updateDom();
-
-	  // TODO: not so nice that the focus is only set after the animation is finished
-	  node.scrollTo(function () {
-	    if (focus) {
-	      node.focus(elem);
-	    }
-	  });
-	};
-
-	/**
-	 * Cancel any running onDelayedSearch.
-	 * @private
-	 */
-	SearchBox.prototype._clearDelay = function() {
-	  if (this.timeout != undefined) {
-	    clearTimeout(this.timeout);
-	    delete this.timeout;
-	  }
-	};
-
-	/**
-	 * Start a timer to execute a search after a short delay.
-	 * Used for reducing the number of searches while typing.
-	 * @param {Event} event
-	 * @private
-	 */
-	SearchBox.prototype._onDelayedSearch = function (event) {
-	  // execute the search after a short delay (reduces the number of
-	  // search actions while typing in the search text box)
-	  this._clearDelay();
-	  var searchBox = this;
-	  this.timeout = setTimeout(function (event) {
-	        searchBox._onSearch(event);
-	      },
-	      this.delay);
-	};
-
-	/**
-	 * Handle onSearch event
-	 * @param {Event} event
-	 * @param {boolean} [forceSearch]  If true, search will be executed again even
-	 *                                 when the search text is not changed.
-	 *                                 Default is false.
-	 * @private
-	 */
-	SearchBox.prototype._onSearch = function (event, forceSearch) {
-	  this._clearDelay();
-
-	  var value = this.dom.search.value;
-	  var text = (value.length > 0) ? value : undefined;
-	  if (text != this.lastText || forceSearch) {
-	    // only search again when changed
-	    this.lastText = text;
-	    this.results = this.editor.search(text);
-	    this._setActiveResult(undefined);
-
-	    // display search results
-	    if (text != undefined) {
-	      var resultCount = this.results.length;
-	      switch (resultCount) {
-	        case 0: this.dom.results.innerHTML = 'no&nbsp;results'; break;
-	        case 1: this.dom.results.innerHTML = '1&nbsp;result'; break;
-	        default: this.dom.results.innerHTML = resultCount + '&nbsp;results'; break;
-	      }
-	    }
-	    else {
-	      this.dom.results.innerHTML = '';
-	    }
-	  }
-	};
-
-	/**
-	 * Handle onKeyDown event in the input box
-	 * @param {Event} event
-	 * @private
-	 */
-	SearchBox.prototype._onKeyDown = function (event) {
-	  var keynum = event.which;
-	  if (keynum == 27) { // ESC
-	    this.dom.search.value = '';  // clear search
-	    this._onSearch(event);
-	    event.preventDefault();
-	    event.stopPropagation();
-	  }
-	  else if (keynum == 13) { // Enter
-	    if (event.ctrlKey) {
-	      // force to search again
-	      this._onSearch(event, true);
-	    }
-	    else if (event.shiftKey) {
-	      // move to the previous search result
-	      this.previous();
-	    }
-	    else {
-	      // move to the next search result
-	      this.next();
-	    }
-	    event.preventDefault();
-	    event.stopPropagation();
-	  }
-	};
-
-	/**
-	 * Handle onKeyUp event in the input box
-	 * @param {Event} event
-	 * @private
-	 */
-	SearchBox.prototype._onKeyUp = function (event) {
-	  var keynum = event.keyCode;
-	  if (keynum != 27 && keynum != 13) { // !show and !Enter
-	    this._onDelayedSearch(event);   // For IE 9
-	  }
-	};
-
-	module.exports = SearchBox;
-
-
-/***/ },
-/* 7 */
-/***/ function(module, exports, __webpack_require__) {
-
-	var ContextMenu = __webpack_require__(10);
+	var ContextMenu = __webpack_require__(1);
 	var appendNodeFactory = __webpack_require__(11);
 	var util = __webpack_require__(3);
 
@@ -2728,7 +1816,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	Node.prototype._updateEditability = function () {
 	  this.editable = {
 	    field: true,
-	    value: true
+	    value: true,
+	    type: true
 	  };
 
 	  if (this.editor) {
@@ -2739,16 +1828,33 @@ return /******/ (function(modules) { // webpackBootstrap
 	      var editable = this.editor.options.editable({
 	        field: this.field,
 	        value: this.value,
+	        type: this.type,
 	        path: this.path()
 	      });
 
 	      if (typeof editable === 'boolean') {
 	        this.editable.field = editable;
 	        this.editable.value = editable;
+	        this.editable.type = editable;
 	      }
 	      else {
 	        if (typeof editable.field === 'boolean') this.editable.field = editable.field;
 	        if (typeof editable.value === 'boolean') this.editable.value = editable.value;
+	        if (typeof editable.type === 'boolean') {
+	          this.editable.type = editable.type && editable.value;
+	        } else {
+	          this.editable.type = this.editable.value;
+	        }
+	        if (typeof editable.fieldName === 'boolean') {
+	          this.editable.fieldName = editable.fieldName;
+	        } else {
+	          this.editable.fieldName = this.editable.field;
+	        }
+	        if (typeof editable.fieldMove === 'boolean') {
+	          this.editable.fieldMove = editable.fieldMove;
+	        } else {
+	          this.editable.fieldMove = this.editable.field;
+	        }
 	      }
 	    }
 	  }
@@ -3900,7 +3006,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	  if (this.editor.options.mode === 'tree') { // note: we take here the global setting
 	    var tdDrag = document.createElement('td');
-	    if (this.editable.field) {
+	    if (this.editable.fieldMove) {
 	      // create draggable area
 	      if (this.parent) {
 	        var domDrag = document.createElement('button');
@@ -4235,7 +3341,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	  if (domField) {
 	    if (this.fieldEditable) {
 	      // parent is an object
-	      domField.contentEditable = this.editable.field;
+	      domField.contentEditable = this.editable.fieldName;
 	      domField.spellcheck = false;
 	      domField.className = 'field';
 	    }
@@ -5032,6 +4138,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	 * @private
 	 */
 	Node.prototype._onSort = function (direction) {
+	  if (typeof direction == "undefined") {
+	    direction = ((this.sort == 'asc') ? 'desc': 'asc');
+	  }
 	  if (this._hasChilds()) {
 	    var order = (direction == 'desc') ? -1 : 1;
 	    var prop = (this.type == 'array') ? 'value': 'field';
@@ -5285,8 +4394,222 @@ return /******/ (function(modules) { // webpackBootstrap
 	  var node = this;
 	  var titles = Node.TYPE_TITLES;
 	  var items = [];
+	  var amChild = this.parent && this.parent._hasChilds();
+	  var amParent = this._hasChilds();
 
-	  if (this.editable.value) {
+	  var contextMenu = {
+	    Type: {
+	      context: node.editable.type,
+	      title: 'Change the type of this field',
+	      className: 'type-' + node.type,
+	      submenu: [
+	        {
+	          text: 'Auto',
+	          className: 'type-auto' +
+	              (node.type == 'auto' ? ' selected' : ''),
+	          title: titles.auto,
+	          click: function () {
+	            node._onChangeType('auto');
+	          }
+	        },
+	        {
+	          text: 'Array',
+	          className: 'type-array' +
+	              (node.type == 'array' ? ' selected' : ''),
+	          title: titles.array,
+	          click: function () {
+	            node._onChangeType('array');
+	          }
+	        },
+	        {
+	          text: 'Object',
+	          className: 'type-object' +
+	              (node.type == 'object' ? ' selected' : ''),
+	          title: titles.object,
+	          click: function () {
+	            node._onChangeType('object');
+	          }
+	        },
+	        {
+	          text: 'String',
+	          className: 'type-string' +
+	              (node.type == 'string' ? ' selected' : ''),
+	          title: titles.string,
+	          click: function () {
+	            node._onChangeType('string');
+	          }
+	        }
+	      ]
+	    },
+	    Sort: {
+	      context: amParent,
+	      title: 'Sort the childs of this ' + node.type,
+	      className: 'sort-' + ((node.sort == 'asc') ? 'desc': 'asc'),
+	      click: function () {
+	        node._onSort();
+	      },
+	      submenu: [
+	        {
+	          text: 'Ascending',
+	          className: 'sort-asc',
+	          title: 'Sort the childs of this ' + node.type + ' in ascending order',
+	          click: function () {
+	            node._onSort('asc');
+	          }
+	        },
+	        {
+	          text: 'Descending',
+	          className: 'sort-desc',
+	          title: 'Sort the childs of this ' + node.type +' in descending order',
+	          click: function () {
+	            node._onSort('desc');
+	          }
+	        }
+	      ]
+	    },
+	    Sep1: {
+	      type: 'separator'
+	    },
+	    Append: {
+	      context: amChild && (node == node.parent.childs[node.parent.childs.length - 1]),
+	      title: 'Append a new field with type \'auto\' after this field (Ctrl+Shift+Ins)',
+	      submenuTitle: 'Select the type of the field to be appended',
+	      className: 'append',
+	      click: function () {
+	        node._onAppend('', '', 'auto');
+	      },
+	      submenu: [
+	        {
+	          text: 'Auto',
+	          className: 'type-auto',
+	          title: titles.auto,
+	          click: function () {
+	            node._onAppend('', '', 'auto');
+	          }
+	        },
+	        {
+	          text: 'Array',
+	          className: 'type-array',
+	          title: titles.array,
+	          click: function () {
+	            node._onAppend('', []);
+	          }
+	        },
+	        {
+	          text: 'Object',
+	          className: 'type-object',
+	          title: titles.object,
+	          click: function () {
+	            node._onAppend('', {});
+	          }
+	        },
+	        {
+	          text: 'String',
+	          className: 'type-string',
+	          title: titles.string,
+	          click: function () {
+	            node._onAppend('', '', 'string');
+	          }
+	        }
+	      ]
+	    },
+	    Insert: {
+	      context: amChild,
+	      title: 'Insert a new field with type \'auto\' before this field (Ctrl+Ins)',
+	      submenuTitle: 'Select the type of the field to be inserted',
+	      className: 'insert',
+	      click: function () {
+	        node._onInsertBefore('', '', 'auto');
+	      },
+	      submenu: [
+	        {
+	          text: 'Auto',
+	          className: 'type-auto',
+	          title: titles.auto,
+	          click: function () {
+	            node._onInsertBefore('', '', 'auto');
+	          }
+	        },
+	        {
+	          text: 'Array',
+	          className: 'type-array',
+	          title: titles.array,
+	          click: function () {
+	            node._onInsertBefore('', []);
+	          }
+	        },
+	        {
+	          text: 'Object',
+	          className: 'type-object',
+	          title: titles.object,
+	          click: function () {
+	            node._onInsertBefore('', {});
+	          }
+	        },
+	        {
+	          text: 'String',
+	          className: 'type-string',
+	          title: titles.string,
+	          click: function () {
+	            node._onInsertBefore('', '', 'string');
+	          }
+	        }
+	      ]
+	    },
+	    Duplicate: {
+	      context: amChild && node.editable.field,
+	      title: 'Duplicate this field (Ctrl+D)',
+	      className: 'duplicate',
+	      click: function () {
+	        node._onDuplicate();
+	      }
+	    },
+	    Remove: {
+	      context: amChild && node.editable.field,
+	      title: 'Remove this field (Ctrl+Del)',
+	      className: 'remove',
+	      click: function () {
+	        node._onRemove();
+	      }
+	    }
+	  };
+
+	  if (typeof this.editor.options.contextMenu === 'function') {
+	    var fieldInfo = {
+	      field: node.field,
+	      value: node.value,
+	      type: node.type,
+	      path: node.path()
+	    };
+	    this.editor.options.contextMenu(fieldInfo, contextMenu, node);
+	  }
+
+	  var needSeparator = false;
+	  for (var name in contextMenu) {
+	    var def = contextMenu[name];
+	    if (def && def.type === 'separator') {
+	      needSeparator = true;
+	    }
+	    if (def && def.context) {
+	      if (needSeparator) {
+	        items.push({
+	          type: 'separator'
+	        });
+	        needSeparator = false;
+	      }
+	      items.push({
+	        text: name,
+	        title: def.title,
+	        className: def.className,
+	        submenuTitle: def.submenuTitle,
+	        submenu: def.submenu,
+	        click: def.click
+	      });
+	    }
+	  }
+
+	/*
+	  if (this.editable.type) {
 	    items.push({
 	      text: 'Type',
 	      title: 'Change the type of this field',
@@ -5485,6 +4808,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	      });
 	    }
 	  }
+	*/
 
 	  var menu = new ContextMenu(items, {close: onClose});
 	  menu.show(anchor);
@@ -5622,10 +4946,622 @@ return /******/ (function(modules) { // webpackBootstrap
 
 
 /***/ },
+/* 5 */
+/***/ function(module, exports, __webpack_require__) {
+
+	/**
+	 * The highlighter can highlight/unhighlight a node, and
+	 * animate the visibility of a context menu.
+	 * @constructor Highlighter
+	 */
+	function Highlighter () {
+	  this.locked = false;
+	}
+
+	/**
+	 * Hightlight given node and its childs
+	 * @param {Node} node
+	 */
+	Highlighter.prototype.highlight = function (node) {
+	  if (this.locked) {
+	    return;
+	  }
+
+	  if (this.node != node) {
+	    // unhighlight current node
+	    if (this.node) {
+	      this.node.setHighlight(false);
+	    }
+
+	    // highlight new node
+	    this.node = node;
+	    this.node.setHighlight(true);
+	  }
+
+	  // cancel any current timeout
+	  this._cancelUnhighlight();
+	};
+
+	/**
+	 * Unhighlight currently highlighted node.
+	 * Will be done after a delay
+	 */
+	Highlighter.prototype.unhighlight = function () {
+	  if (this.locked) {
+	    return;
+	  }
+
+	  var me = this;
+	  if (this.node) {
+	    this._cancelUnhighlight();
+
+	    // do the unhighlighting after a small delay, to prevent re-highlighting
+	    // the same node when moving from the drag-icon to the contextmenu-icon
+	    // or vice versa.
+	    this.unhighlightTimer = setTimeout(function () {
+	      me.node.setHighlight(false);
+	      me.node = undefined;
+	      me.unhighlightTimer = undefined;
+	    }, 0);
+	  }
+	};
+
+	/**
+	 * Cancel an unhighlight action (if before the timeout of the unhighlight action)
+	 * @private
+	 */
+	Highlighter.prototype._cancelUnhighlight = function () {
+	  if (this.unhighlightTimer) {
+	    clearTimeout(this.unhighlightTimer);
+	    this.unhighlightTimer = undefined;
+	  }
+	};
+
+	/**
+	 * Lock highlighting or unhighlighting nodes.
+	 * methods highlight and unhighlight do not work while locked.
+	 */
+	Highlighter.prototype.lock = function () {
+	  this.locked = true;
+	};
+
+	/**
+	 * Unlock highlighting or unhighlighting nodes
+	 */
+	Highlighter.prototype.unlock = function () {
+	  this.locked = false;
+	};
+
+	module.exports = Highlighter;
+
+
+/***/ },
+/* 6 */
+/***/ function(module, exports, __webpack_require__) {
+
+	var util = __webpack_require__(3);
+
+	/**
+	 * @constructor History
+	 * Store action history, enables undo and redo
+	 * @param {JSONEditor} editor
+	 */
+	function History (editor) {
+	  this.editor = editor;
+	  this.clear();
+
+	  // map with all supported actions
+	  this.actions = {
+	    'editField': {
+	      'undo': function (params) {
+	        params.node.updateField(params.oldValue);
+	      },
+	      'redo': function (params) {
+	        params.node.updateField(params.newValue);
+	      }
+	    },
+	    'editValue': {
+	      'undo': function (params) {
+	        params.node.updateValue(params.oldValue);
+	      },
+	      'redo': function (params) {
+	        params.node.updateValue(params.newValue);
+	      }
+	    },
+	    'appendNode': {
+	      'undo': function (params) {
+	        params.parent.removeChild(params.node);
+	      },
+	      'redo': function (params) {
+	        params.parent.appendChild(params.node);
+	      }
+	    },
+	    'insertBeforeNode': {
+	      'undo': function (params) {
+	        params.parent.removeChild(params.node);
+	      },
+	      'redo': function (params) {
+	        params.parent.insertBefore(params.node, params.beforeNode);
+	      }
+	    },
+	    'insertAfterNode': {
+	      'undo': function (params) {
+	        params.parent.removeChild(params.node);
+	      },
+	      'redo': function (params) {
+	        params.parent.insertAfter(params.node, params.afterNode);
+	      }
+	    },
+	    'removeNode': {
+	      'undo': function (params) {
+	        var parent = params.parent;
+	        var beforeNode = parent.childs[params.index] || parent.append;
+	        parent.insertBefore(params.node, beforeNode);
+	      },
+	      'redo': function (params) {
+	        params.parent.removeChild(params.node);
+	      }
+	    },
+	    'duplicateNode': {
+	      'undo': function (params) {
+	        params.parent.removeChild(params.clone);
+	      },
+	      'redo': function (params) {
+	        params.parent.insertAfter(params.clone, params.node);
+	      }
+	    },
+	    'changeType': {
+	      'undo': function (params) {
+	        params.node.changeType(params.oldType);
+	      },
+	      'redo': function (params) {
+	        params.node.changeType(params.newType);
+	      }
+	    },
+	    'moveNode': {
+	      'undo': function (params) {
+	        params.startParent.moveTo(params.node, params.startIndex);
+	      },
+	      'redo': function (params) {
+	        params.endParent.moveTo(params.node, params.endIndex);
+	      }
+	    },
+	    'sort': {
+	      'undo': function (params) {
+	        var node = params.node;
+	        node.hideChilds();
+	        node.sort = params.oldSort;
+	        node.childs = params.oldChilds;
+	        node.showChilds();
+	      },
+	      'redo': function (params) {
+	        var node = params.node;
+	        node.hideChilds();
+	        node.sort = params.newSort;
+	        node.childs = params.newChilds;
+	        node.showChilds();
+	      }
+	    }
+
+	    // TODO: restore the original caret position and selection with each undo
+	    // TODO: implement history for actions "expand", "collapse", "scroll", "setDocument"
+	  };
+	}
+
+	/**
+	 * The method onChange is executed when the History is changed, and can
+	 * be overloaded.
+	 */
+	History.prototype.onChange = function () {};
+
+	/**
+	 * Add a new action to the history
+	 * @param {String} action  The executed action. Available actions: "editField",
+	 *                         "editValue", "changeType", "appendNode",
+	 *                         "removeNode", "duplicateNode", "moveNode"
+	 * @param {Object} params  Object containing parameters describing the change.
+	 *                         The parameters in params depend on the action (for
+	 *                         example for "editValue" the Node, old value, and new
+	 *                         value are provided). params contains all information
+	 *                         needed to undo or redo the action.
+	 */
+	History.prototype.add = function (action, params) {
+	  this.index++;
+	  this.history[this.index] = {
+	    'action': action,
+	    'params': params,
+	    'timestamp': new Date()
+	  };
+
+	  // remove redo actions which are invalid now
+	  if (this.index < this.history.length - 1) {
+	    this.history.splice(this.index + 1, this.history.length - this.index - 1);
+	  }
+
+	  // fire onchange event
+	  this.onChange();
+	};
+
+	/**
+	 * Clear history
+	 */
+	History.prototype.clear = function () {
+	  this.history = [];
+	  this.index = -1;
+
+	  // fire onchange event
+	  this.onChange();
+	};
+
+	/**
+	 * Check if there is an action available for undo
+	 * @return {Boolean} canUndo
+	 */
+	History.prototype.canUndo = function () {
+	  return (this.index >= 0);
+	};
+
+	/**
+	 * Check if there is an action available for redo
+	 * @return {Boolean} canRedo
+	 */
+	History.prototype.canRedo = function () {
+	  return (this.index < this.history.length - 1);
+	};
+
+	/**
+	 * Undo the last action
+	 */
+	History.prototype.undo = function () {
+	  if (this.canUndo()) {
+	    var obj = this.history[this.index];
+	    if (obj) {
+	      var action = this.actions[obj.action];
+	      if (action && action.undo) {
+	        action.undo(obj.params);
+	        if (obj.params.oldSelection) {
+	          this.editor.setSelection(obj.params.oldSelection);
+	        }
+	      }
+	      else {
+	        util.log('Error: unknown action "' + obj.action + '"');
+	      }
+	    }
+	    this.index--;
+
+	    // fire onchange event
+	    this.onChange();
+	  }
+	};
+
+	/**
+	 * Redo the last action
+	 */
+	History.prototype.redo = function () {
+	  if (this.canRedo()) {
+	    this.index++;
+
+	    var obj = this.history[this.index];
+	    if (obj) {
+	      var action = this.actions[obj.action];
+	      if (action && action.redo) {
+	        action.redo(obj.params);
+	        if (obj.params.newSelection) {
+	          this.editor.setSelection(obj.params.newSelection);
+	        }
+	      }
+	      else {
+	        util.log('Error: unknown action "' + obj.action + '"');
+	      }
+	    }
+
+	    // fire onchange event
+	    this.onChange();
+	  }
+	};
+
+	module.exports = History;
+
+
+/***/ },
+/* 7 */
+/***/ function(module, exports, __webpack_require__) {
+
+	/**
+	 * @constructor SearchBox
+	 * Create a search box in given HTML container
+	 * @param {JSONEditor} editor    The JSON Editor to attach to
+	 * @param {Element} container               HTML container element of where to
+	 *                                          create the search box
+	 */
+	function SearchBox (editor, container) {
+	  var searchBox = this;
+
+	  this.editor = editor;
+	  this.timeout = undefined;
+	  this.delay = 200; // ms
+	  this.lastText = undefined;
+
+	  this.dom = {};
+	  this.dom.container = container;
+
+	  var table = document.createElement('table');
+	  this.dom.table = table;
+	  table.className = 'search';
+	  container.appendChild(table);
+	  var tbody = document.createElement('tbody');
+	  this.dom.tbody = tbody;
+	  table.appendChild(tbody);
+	  var tr = document.createElement('tr');
+	  tbody.appendChild(tr);
+
+	  var td = document.createElement('td');
+	  tr.appendChild(td);
+	  var results = document.createElement('div');
+	  this.dom.results = results;
+	  results.className = 'results';
+	  td.appendChild(results);
+
+	  td = document.createElement('td');
+	  tr.appendChild(td);
+	  var divInput = document.createElement('div');
+	  this.dom.input = divInput;
+	  divInput.className = 'frame';
+	  divInput.title = 'Search fields and values';
+	  td.appendChild(divInput);
+
+	  // table to contain the text input and search button
+	  var tableInput = document.createElement('table');
+	  divInput.appendChild(tableInput);
+	  var tbodySearch = document.createElement('tbody');
+	  tableInput.appendChild(tbodySearch);
+	  tr = document.createElement('tr');
+	  tbodySearch.appendChild(tr);
+
+	  var refreshSearch = document.createElement('button');
+	  refreshSearch.className = 'refresh';
+	  td = document.createElement('td');
+	  td.appendChild(refreshSearch);
+	  tr.appendChild(td);
+
+	  var search = document.createElement('input');
+	  this.dom.search = search;
+	  search.oninput = function (event) {
+	    searchBox._onDelayedSearch(event);
+	  };
+	  search.onchange = function (event) { // For IE 9
+	    searchBox._onSearch(event);
+	  };
+	  search.onkeydown = function (event) {
+	    searchBox._onKeyDown(event);
+	  };
+	  search.onkeyup = function (event) {
+	    searchBox._onKeyUp(event);
+	  };
+	  refreshSearch.onclick = function (event) {
+	    search.select();
+	  };
+
+	  // TODO: ESC in FF restores the last input, is a FF bug, https://bugzilla.mozilla.org/show_bug.cgi?id=598819
+	  td = document.createElement('td');
+	  td.appendChild(search);
+	  tr.appendChild(td);
+
+	  var searchNext = document.createElement('button');
+	  searchNext.title = 'Next result (Enter)';
+	  searchNext.className = 'next';
+	  searchNext.onclick = function () {
+	    searchBox.next();
+	  };
+	  td = document.createElement('td');
+	  td.appendChild(searchNext);
+	  tr.appendChild(td);
+
+	  var searchPrevious = document.createElement('button');
+	  searchPrevious.title = 'Previous result (Shift+Enter)';
+	  searchPrevious.className = 'previous';
+	  searchPrevious.onclick = function () {
+	    searchBox.previous();
+	  };
+	  td = document.createElement('td');
+	  td.appendChild(searchPrevious);
+	  tr.appendChild(td);
+	}
+
+	/**
+	 * Go to the next search result
+	 * @param {boolean} [focus]   If true, focus will be set to the next result
+	 *                            focus is false by default.
+	 */
+	SearchBox.prototype.next = function(focus) {
+	  if (this.results != undefined) {
+	    var index = (this.resultIndex != undefined) ? this.resultIndex + 1 : 0;
+	    if (index > this.results.length - 1) {
+	      index = 0;
+	    }
+	    this._setActiveResult(index, focus);
+	  }
+	};
+
+	/**
+	 * Go to the prevous search result
+	 * @param {boolean} [focus]   If true, focus will be set to the next result
+	 *                            focus is false by default.
+	 */
+	SearchBox.prototype.previous = function(focus) {
+	  if (this.results != undefined) {
+	    var max = this.results.length - 1;
+	    var index = (this.resultIndex != undefined) ? this.resultIndex - 1 : max;
+	    if (index < 0) {
+	      index = max;
+	    }
+	    this._setActiveResult(index, focus);
+	  }
+	};
+
+	/**
+	 * Set new value for the current active result
+	 * @param {Number} index
+	 * @param {boolean} [focus]   If true, focus will be set to the next result.
+	 *                            focus is false by default.
+	 * @private
+	 */
+	SearchBox.prototype._setActiveResult = function(index, focus) {
+	  // de-activate current active result
+	  if (this.activeResult) {
+	    var prevNode = this.activeResult.node;
+	    var prevElem = this.activeResult.elem;
+	    if (prevElem == 'field') {
+	      delete prevNode.searchFieldActive;
+	    }
+	    else {
+	      delete prevNode.searchValueActive;
+	    }
+	    prevNode.updateDom();
+	  }
+
+	  if (!this.results || !this.results[index]) {
+	    // out of range, set to undefined
+	    this.resultIndex = undefined;
+	    this.activeResult = undefined;
+	    return;
+	  }
+
+	  this.resultIndex = index;
+
+	  // set new node active
+	  var node = this.results[this.resultIndex].node;
+	  var elem = this.results[this.resultIndex].elem;
+	  if (elem == 'field') {
+	    node.searchFieldActive = true;
+	  }
+	  else {
+	    node.searchValueActive = true;
+	  }
+	  this.activeResult = this.results[this.resultIndex];
+	  node.updateDom();
+
+	  // TODO: not so nice that the focus is only set after the animation is finished
+	  node.scrollTo(function () {
+	    if (focus) {
+	      node.focus(elem);
+	    }
+	  });
+	};
+
+	/**
+	 * Cancel any running onDelayedSearch.
+	 * @private
+	 */
+	SearchBox.prototype._clearDelay = function() {
+	  if (this.timeout != undefined) {
+	    clearTimeout(this.timeout);
+	    delete this.timeout;
+	  }
+	};
+
+	/**
+	 * Start a timer to execute a search after a short delay.
+	 * Used for reducing the number of searches while typing.
+	 * @param {Event} event
+	 * @private
+	 */
+	SearchBox.prototype._onDelayedSearch = function (event) {
+	  // execute the search after a short delay (reduces the number of
+	  // search actions while typing in the search text box)
+	  this._clearDelay();
+	  var searchBox = this;
+	  this.timeout = setTimeout(function (event) {
+	        searchBox._onSearch(event);
+	      },
+	      this.delay);
+	};
+
+	/**
+	 * Handle onSearch event
+	 * @param {Event} event
+	 * @param {boolean} [forceSearch]  If true, search will be executed again even
+	 *                                 when the search text is not changed.
+	 *                                 Default is false.
+	 * @private
+	 */
+	SearchBox.prototype._onSearch = function (event, forceSearch) {
+	  this._clearDelay();
+
+	  var value = this.dom.search.value;
+	  var text = (value.length > 0) ? value : undefined;
+	  if (text != this.lastText || forceSearch) {
+	    // only search again when changed
+	    this.lastText = text;
+	    this.results = this.editor.search(text);
+	    this._setActiveResult(undefined);
+
+	    // display search results
+	    if (text != undefined) {
+	      var resultCount = this.results.length;
+	      switch (resultCount) {
+	        case 0: this.dom.results.innerHTML = 'no&nbsp;results'; break;
+	        case 1: this.dom.results.innerHTML = '1&nbsp;result'; break;
+	        default: this.dom.results.innerHTML = resultCount + '&nbsp;results'; break;
+	      }
+	    }
+	    else {
+	      this.dom.results.innerHTML = '';
+	    }
+	  }
+	};
+
+	/**
+	 * Handle onKeyDown event in the input box
+	 * @param {Event} event
+	 * @private
+	 */
+	SearchBox.prototype._onKeyDown = function (event) {
+	  var keynum = event.which;
+	  if (keynum == 27) { // ESC
+	    this.dom.search.value = '';  // clear search
+	    this._onSearch(event);
+	    event.preventDefault();
+	    event.stopPropagation();
+	  }
+	  else if (keynum == 13) { // Enter
+	    if (event.ctrlKey) {
+	      // force to search again
+	      this._onSearch(event, true);
+	    }
+	    else if (event.shiftKey) {
+	      // move to the previous search result
+	      this.previous();
+	    }
+	    else {
+	      // move to the next search result
+	      this.next();
+	    }
+	    event.preventDefault();
+	    event.stopPropagation();
+	  }
+	};
+
+	/**
+	 * Handle onKeyUp event in the input box
+	 * @param {Event} event
+	 * @private
+	 */
+	SearchBox.prototype._onKeyUp = function (event) {
+	  var keynum = event.keyCode;
+	  if (keynum != 27 && keynum != 13) { // !show and !Enter
+	    this._onDelayedSearch(event);   // For IE 9
+	  }
+	};
+
+	module.exports = SearchBox;
+
+
+/***/ },
 /* 8 */
 /***/ function(module, exports, __webpack_require__) {
 
-	var ContextMenu = __webpack_require__(10);
+	var ContextMenu = __webpack_require__(1);
 
 	/**
 	 * Create a select box to be used in the editor menu's, which allows to switch mode
@@ -5746,457 +5682,757 @@ return /******/ (function(modules) { // webpackBootstrap
 /* 10 */
 /***/ function(module, exports, __webpack_require__) {
 
+	var Highlighter = __webpack_require__(5);
+	var History = __webpack_require__(6);
+	var SearchBox = __webpack_require__(7);
+	var Node = __webpack_require__(4);
+	var modeswitcher = __webpack_require__(8);
 	var util = __webpack_require__(3);
 
-	/**
-	 * A context menu
-	 * @param {Object[]} items    Array containing the menu structure
-	 *                            TODO: describe structure
-	 * @param {Object} [options]  Object with options. Available options:
-	 *                            {function} close    Callback called when the
-	 *                                                context menu is being closed.
-	 * @constructor
-	 */
-	function ContextMenu (items, options) {
-	  this.dom = {};
-
-	  var me = this;
-	  var dom = this.dom;
-	  this.anchor = undefined;
-	  this.items = items;
-	  this.eventListeners = {};
-	  this.selection = undefined; // holds the selection before the menu was opened
-	  this.visibleSubmenu = undefined;
-	  this.onClose = options ? options.close : undefined;
-
-	  // create a container element
-	  var menu = document.createElement('div');
-	  menu.className = 'jsoneditor-contextmenu';
-	  dom.menu = menu;
-
-	  // create a list to hold the menu items
-	  var list = document.createElement('ul');
-	  list.className = 'menu';
-	  menu.appendChild(list);
-	  dom.list = list;
-	  dom.items = []; // list with all buttons
-
-	  // create a (non-visible) button to set the focus to the menu
-	  var focusButton = document.createElement('button');
-	  dom.focusButton = focusButton;
-	  var li = document.createElement('li');
-	  li.style.overflow = 'hidden';
-	  li.style.height = '0';
-	  li.appendChild(focusButton);
-	  list.appendChild(li);
-
-	  function createMenuItems (list, domItems, items) {
-	    items.forEach(function (item) {
-	      if (item.type == 'separator') {
-	        // create a separator
-	        var separator = document.createElement('div');
-	        separator.className = 'separator';
-	        li = document.createElement('li');
-	        li.appendChild(separator);
-	        list.appendChild(li);
-	      }
-	      else {
-	        var domItem = {};
-
-	        // create a menu item
-	        var li = document.createElement('li');
-	        list.appendChild(li);
-
-	        // create a button in the menu item
-	        var button = document.createElement('button');
-	        button.className = item.className;
-	        domItem.button = button;
-	        if (item.title) {
-	          button.title = item.title;
-	        }
-	        if (item.click) {
-	          button.onclick = function () {
-	            me.hide();
-	            item.click();
-	          };
-	        }
-	        li.appendChild(button);
-
-	        // create the contents of the button
-	        if (item.submenu) {
-	          // add the icon to the button
-	          var divIcon = document.createElement('div');
-	          divIcon.className = 'icon';
-	          button.appendChild(divIcon);
-	          button.appendChild(document.createTextNode(item.text));
-
-	          var buttonSubmenu;
-	          if (item.click) {
-	            // submenu and a button with a click handler
-	            button.className += ' default';
-
-	            var buttonExpand = document.createElement('button');
-	            domItem.buttonExpand = buttonExpand;
-	            buttonExpand.className = 'expand';
-	            buttonExpand.innerHTML = '<div class="expand"></div>';
-	            li.appendChild(buttonExpand);
-	            if (item.submenuTitle) {
-	              buttonExpand.title = item.submenuTitle;
-	            }
-
-	            buttonSubmenu = buttonExpand;
-	          }
-	          else {
-	            // submenu and a button without a click handler
-	            var divExpand = document.createElement('div');
-	            divExpand.className = 'expand';
-	            button.appendChild(divExpand);
-
-	            buttonSubmenu = button;
-	          }
-
-	          // attach a handler to expand/collapse the submenu
-	          buttonSubmenu.onclick = function () {
-	            me._onExpandItem(domItem);
-	            buttonSubmenu.focus();
-	          };
-
-	          // create the submenu
-	          var domSubItems = [];
-	          domItem.subItems = domSubItems;
-	          var ul = document.createElement('ul');
-	          domItem.ul = ul;
-	          ul.className = 'menu';
-	          ul.style.height = '0';
-	          li.appendChild(ul);
-	          createMenuItems(ul, domSubItems, item.submenu);
-	        }
-	        else {
-	          // no submenu, just a button with clickhandler
-	          button.innerHTML = '<div class="icon"></div>' + item.text;
-	        }
-
-	        domItems.push(domItem);
-	      }
-	    });
-	  }
-	  createMenuItems(list, this.dom.items, items);
-
-	  // TODO: when the editor is small, show the submenu on the right instead of inline?
-
-	  // calculate the max height of the menu with one submenu expanded
-	  this.maxHeight = 0; // height in pixels
-	  items.forEach(function (item) {
-	    var height = (items.length + (item.submenu ? item.submenu.length : 0)) * 24;
-	    me.maxHeight = Math.max(me.maxHeight, height);
-	  });
-	}
+	// create a mixin with the functions for tree mode
+	var treemode = {};
 
 	/**
-	 * Get the currently visible buttons
-	 * @return {Array.<HTMLElement>} buttons
+	 * Create a tree editor
+	 * @param {Element} container    Container element
+	 * @param {Object}  [options]    Object with options. available options:
+	 *                               {String} mode      Editor mode. Available values:
+	 *                                                  'tree' (default), 'view',
+	 *                                                  and 'form'.
+	 *                               {Boolean} search   Enable search box.
+	 *                                                  True by default
+	 *                               {Boolean} history  Enable history (undo/redo).
+	 *                                                  True by default
+	 *                               {function} change  Callback method, triggered
+	 *                                                  on change of contents
+	 *                               {String} name      Field name for the root node.
 	 * @private
 	 */
-	ContextMenu.prototype._getVisibleButtons = function () {
-	  var buttons = [];
-	  var me = this;
-	  this.dom.items.forEach(function (item) {
-	    buttons.push(item.button);
-	    if (item.buttonExpand) {
-	      buttons.push(item.buttonExpand);
-	    }
-	    if (item.subItems && item == me.expandedItem) {
-	      item.subItems.forEach(function (subItem) {
-	        buttons.push(subItem.button);
-	        if (subItem.buttonExpand) {
-	          buttons.push(subItem.buttonExpand);
-	        }
-	        // TODO: change to fully recursive method
-	      });
-	    }
-	  });
+	treemode.create = function (container, options) {
+	  if (!container) {
+	    throw new Error('No container element provided.');
+	  }
+	  this.container = container;
+	  this.dom = {};
+	  this.highlighter = new Highlighter();
+	  this.selection = undefined; // will hold the last input selection
 
-	  return buttons;
+	  this._setOptions(options);
+
+	  if (this.options.history && this.options.mode !== 'view') {
+	    this.history = new History(this);
+	  }
+
+	  this._createFrame();
+	  this._createTable();
 	};
 
-	// currently displayed context menu, a singleton. We may only have one visible context menu
-	ContextMenu.visibleMenu = undefined;
+	/**
+	 * Detach the editor from the DOM
+	 * @private
+	 */
+	treemode._delete = function () {
+	  if (this.frame && this.container && this.frame.parentNode == this.container) {
+	    this.container.removeChild(this.frame);
+	  }
+	};
 
 	/**
-	 * Attach the menu to an anchor
-	 * @param {HTMLElement} anchor
+	 * Initialize and set default options
+	 * @param {Object}  [options]    See description in constructor
+	 * @private
 	 */
-	ContextMenu.prototype.show = function (anchor) {
-	  this.hide();
+	treemode._setOptions = function (options) {
+	  this.options = {
+	    search: true,
+	    history: true,
+	    mode: 'tree',
+	    name: undefined   // field name of root node
+	  };
 
-	  // calculate whether the menu fits below the anchor
-	  var windowHeight = window.innerHeight,
-	      windowScroll = (window.pageYOffset || document.scrollTop || 0),
-	      windowBottom = windowHeight + windowScroll,
-	      anchorHeight = anchor.offsetHeight,
-	      menuHeight = this.maxHeight;
+	  // copy all options
+	  if (options) {
+	    for (var prop in options) {
+	      if (options.hasOwnProperty(prop)) {
+	        this.options[prop] = options[prop];
+	      }
+	    }
+	  }
+	};
 
-	  // position the menu
-	  var left = util.getAbsoluteLeft(anchor);
-	  var top = util.getAbsoluteTop(anchor);
-	  if (top + anchorHeight + menuHeight < windowBottom) {
-	    // display the menu below the anchor
-	    this.dom.menu.style.left = left + 'px';
-	    this.dom.menu.style.top = (top + anchorHeight) + 'px';
-	    this.dom.menu.style.bottom = '';
+	// node currently being edited
+	var focusNode = undefined;
+
+	// dom having focus
+	var domFocus = null;
+
+	/**
+	 * Set JSON object in editor
+	 * @param {Object | undefined} json      JSON data
+	 * @param {String}             [name]    Optional field name for the root node.
+	 *                                       Can also be set using setName(name).
+	 */
+	treemode.set = function (json, name) {
+	  // adjust field name for root node
+	  if (name) {
+	    // TODO: deprecated since version 2.2.0. Cleanup some day.
+	    util.log('Warning: second parameter "name" is deprecated. ' +
+	        'Use setName(name) instead.');
+	    this.options.name = name;
+	  }
+
+	  // verify if json is valid JSON, ignore when a function
+	  if (json instanceof Function || (json === undefined)) {
+	    this.clear();
 	  }
 	  else {
-	    // display the menu above the anchor
-	    this.dom.menu.style.left = left + 'px';
-	    this.dom.menu.style.top = '';
-	    this.dom.menu.style.bottom = (windowHeight - top) + 'px';
+	    this.content.removeChild(this.table);  // Take the table offline
+
+	    // replace the root node
+	    var params = {
+	      'field': this.options.name,
+	      'value': json
+	    };
+	    var node = new Node(this, params);
+	    this._setRoot(node);
+
+	    // expand
+	    var recurse = false;
+	    this.node.expand(recurse);
+
+	    this.content.appendChild(this.table);  // Put the table online again
 	  }
 
-	  // attach the menu to the document
-	  document.body.appendChild(this.dom.menu);
-
-	  // create and attach event listeners
-	  var me = this;
-	  var list = this.dom.list;
-	  this.eventListeners.mousedown = util.addEventListener(
-	      document, 'mousedown', function (event) {
-	        // hide menu on click outside of the menu
-	        var target = event.target;
-	        if ((target != list) && !me._isChildOf(target, list)) {
-	          me.hide();
-	          event.stopPropagation();
-	          event.preventDefault();
-	        }
-	      });
-	  this.eventListeners.mousewheel = util.addEventListener(
-	      document, 'mousewheel', function (event) {
-	        // block scrolling when context menu is visible
-	        event.stopPropagation();
-	        event.preventDefault();
-	      });
-	  this.eventListeners.keydown = util.addEventListener(
-	      document, 'keydown', function (event) {
-	        me._onKeyDown(event);
-	      });
-
-	  // move focus to the first button in the context menu
-	  this.selection = util.getSelection();
-	  this.anchor = anchor;
-	  setTimeout(function () {
-	    me.dom.focusButton.focus();
-	  }, 0);
-
-	  if (ContextMenu.visibleMenu) {
-	    ContextMenu.visibleMenu.hide();
+	  // TODO: maintain history, store last state and previous document
+	  if (this.history) {
+	    this.history.clear();
 	  }
-	  ContextMenu.visibleMenu = this;
 	};
 
 	/**
-	 * Hide the context menu if visible
+	 * Get JSON object from editor
+	 * @return {Object | undefined} json
 	 */
-	ContextMenu.prototype.hide = function () {
-	  // remove the menu from the DOM
-	  if (this.dom.menu.parentNode) {
-	    this.dom.menu.parentNode.removeChild(this.dom.menu);
-	    if (this.onClose) {
-	      this.onClose();
-	    }
+	treemode.get = function () {
+	  // remove focus from currently edited node
+	  if (focusNode) {
+	    focusNode.blur();
 	  }
 
-	  // remove all event listeners
-	  // all event listeners are supposed to be attached to document.
-	  for (var name in this.eventListeners) {
-	    if (this.eventListeners.hasOwnProperty(name)) {
-	      var fn = this.eventListeners[name];
-	      if (fn) {
-	        util.removeEventListener(document, name, fn);
-	      }
-	      delete this.eventListeners[name];
-	    }
+	  if (this.node) {
+	    return this.node.getValue();
 	  }
-
-	  if (ContextMenu.visibleMenu == this) {
-	    ContextMenu.visibleMenu = undefined;
+	  else {
+	    return undefined;
 	  }
 	};
 
 	/**
-	 * Expand a submenu
-	 * Any currently expanded submenu will be hided.
-	 * @param {Object} domItem
+	 * Get the text contents of the editor
+	 * @return {String} jsonText
+	 */
+	treemode.getText = function() {
+	  return JSON.stringify(this.get());
+	};
+
+	/**
+	 * Set the text contents of the editor
+	 * @param {String} jsonText
+	 */
+	treemode.setText = function(jsonText) {
+	  this.set(util.parse(jsonText));
+	};
+
+	/**
+	 * Set a field name for the root node.
+	 * @param {String | undefined} name
+	 */
+	treemode.setName = function (name) {
+	  this.options.name = name;
+	  if (this.node) {
+	    this.node.updateField(this.options.name);
+	  }
+	};
+
+	/**
+	 * Get the field name for the root node.
+	 * @return {String | undefined} name
+	 */
+	treemode.getName = function () {
+	  return this.options.name;
+	};
+
+	/**
+	 * Set focus to the editor. Focus will be set to:
+	 * - the first editable field or value, or else
+	 * - to the expand button of the root node, or else
+	 * - to the context menu button of the root node, or else
+	 * - to the first button in the top menu
+	 */
+	treemode.focus = function () {
+	  var input = this.content.querySelector('[contenteditable=true]');
+	  if (input) {
+	    input.focus();
+	  }
+	  else if (this.node.dom.expand) {
+	    this.node.dom.expand.focus();
+	  }
+	  else if (this.node.dom.menu) {
+	    this.node.dom.menu.focus();
+	  }
+	  else {
+	    // focus to the first button in the menu
+	    input = this.frame.querySelector('button');
+	    if (input) {
+	      input.focus();
+	    }
+	  }
+	};
+
+	/**
+	 * Remove the root node from the editor
+	 */
+	treemode.clear = function () {
+	  if (this.node) {
+	    this.node.collapse();
+	    this.tbody.removeChild(this.node.getDom());
+	    delete this.node;
+	  }
+	};
+
+	/**
+	 * Set the root node for the json editor
+	 * @param {Node} node
 	 * @private
 	 */
-	ContextMenu.prototype._onExpandItem = function (domItem) {
-	  var me = this;
-	  var alreadyVisible = (domItem == this.expandedItem);
+	treemode._setRoot = function (node) {
+	  this.clear();
 
-	  // hide the currently visible submenu
-	  var expandedItem = this.expandedItem;
-	  if (expandedItem) {
-	    //var ul = expandedItem.ul;
-	    expandedItem.ul.style.height = '0';
-	    expandedItem.ul.style.padding = '';
-	    setTimeout(function () {
-	      if (me.expandedItem != expandedItem) {
-	        expandedItem.ul.style.display = '';
-	        util.removeClassName(expandedItem.ul.parentNode, 'selected');
-	      }
-	    }, 300); // timeout duration must match the css transition duration
-	    this.expandedItem = undefined;
+	  this.node = node;
+
+	  // append to the dom
+	  this.tbody.appendChild(node.getDom());
+	};
+
+	/**
+	 * Search text in all nodes
+	 * The nodes will be expanded when the text is found one of its childs,
+	 * else it will be collapsed. Searches are case insensitive.
+	 * @param {String} text
+	 * @return {Object[]} results  Array with nodes containing the search results
+	 *                             The result objects contains fields:
+	 *                             - {Node} node,
+	 *                             - {String} elem  the dom element name where
+	 *                                              the result is found ('field' or
+	 *                                              'value')
+	 */
+	treemode.search = function (text) {
+	  var results;
+	  if (this.node) {
+	    this.content.removeChild(this.table);  // Take the table offline
+	    results = this.node.search(text);
+	    this.content.appendChild(this.table);  // Put the table online again
+	  }
+	  else {
+	    results = [];
 	  }
 
-	  if (!alreadyVisible) {
-	    var ul = domItem.ul;
-	    ul.style.display = 'block';
-	    var height = ul.clientHeight; // force a reflow in Firefox
-	    setTimeout(function () {
-	      if (me.expandedItem == domItem) {
-	        ul.style.height = (ul.childNodes.length * 24) + 'px';
-	        ul.style.padding = '5px 10px';
-	      }
-	    }, 0);
-	    util.addClassName(ul.parentNode, 'selected');
-	    this.expandedItem = domItem;
+	  return results;
+	};
+
+	/**
+	 * Expand all nodes
+	 */
+	treemode.expandAll = function () {
+	  if (this.node) {
+	    this.content.removeChild(this.table);  // Take the table offline
+	    this.node.expand();
+	    this.content.appendChild(this.table);  // Put the table online again
 	  }
 	};
 
 	/**
-	 * Handle onkeydown event
+	 * Collapse all nodes
+	 */
+	treemode.collapseAll = function () {
+	  if (this.node) {
+	    this.content.removeChild(this.table);  // Take the table offline
+	    this.node.collapse();
+	    this.content.appendChild(this.table);  // Put the table online again
+	  }
+	};
+
+	/**
+	 * The method onChange is called whenever a field or value is changed, created,
+	 * deleted, duplicated, etc.
+	 * @param {String} action  Change action. Available values: "editField",
+	 *                         "editValue", "changeType", "appendNode",
+	 *                         "removeNode", "duplicateNode", "moveNode", "expand",
+	 *                         "collapse".
+	 * @param {Object} params  Object containing parameters describing the change.
+	 *                         The parameters in params depend on the action (for
+	 *                         example for "editValue" the Node, old value, and new
+	 *                         value are provided). params contains all information
+	 *                         needed to undo or redo the action.
+	 * @private
+	 */
+	treemode._onAction = function (action, params) {
+	  // add an action to the history
+	  if (this.history) {
+	    this.history.add(action, params);
+	  }
+
+	  // trigger the onChange callback
+	  if (this.options.change) {
+	    try {
+	      this.options.change();
+	    }
+	    catch (err) {
+	      util.log('Error in change callback: ', err);
+	    }
+	  }
+	};
+
+	/**
+	 * Start autoscrolling when given mouse position is above the top of the
+	 * editor contents, or below the bottom.
+	 * @param {Number} mouseY  Absolute mouse position in pixels
+	 */
+	treemode.startAutoScroll = function (mouseY) {
+	  var me = this;
+	  var content = this.content;
+	  var top = util.getAbsoluteTop(content);
+	  var height = content.clientHeight;
+	  var bottom = top + height;
+	  var margin = 24;
+	  var interval = 50; // ms
+
+	  if ((mouseY < top + margin) && content.scrollTop > 0) {
+	    this.autoScrollStep = ((top + margin) - mouseY) / 3;
+	  }
+	  else if (mouseY > bottom - margin &&
+	      height + content.scrollTop < content.scrollHeight) {
+	    this.autoScrollStep = ((bottom - margin) - mouseY) / 3;
+	  }
+	  else {
+	    this.autoScrollStep = undefined;
+	  }
+
+	  if (this.autoScrollStep) {
+	    if (!this.autoScrollTimer) {
+	      this.autoScrollTimer = setInterval(function () {
+	        if (me.autoScrollStep) {
+	          content.scrollTop -= me.autoScrollStep;
+	        }
+	        else {
+	          me.stopAutoScroll();
+	        }
+	      }, interval);
+	    }
+	  }
+	  else {
+	    this.stopAutoScroll();
+	  }
+	};
+
+	/**
+	 * Stop auto scrolling. Only applicable when scrolling
+	 */
+	treemode.stopAutoScroll = function () {
+	  if (this.autoScrollTimer) {
+	    clearTimeout(this.autoScrollTimer);
+	    delete this.autoScrollTimer;
+	  }
+	  if (this.autoScrollStep) {
+	    delete this.autoScrollStep;
+	  }
+	};
+
+
+	/**
+	 * Set the focus to an element in the editor, set text selection, and
+	 * set scroll position.
+	 * @param {Object} selection  An object containing fields:
+	 *                            {Element | undefined} dom     The dom element
+	 *                                                          which has focus
+	 *                            {Range | TextRange} range     A text selection
+	 *                            {Number} scrollTop            Scroll position
+	 */
+	treemode.setSelection = function (selection) {
+	  if (!selection) {
+	    return;
+	  }
+
+	  if ('scrollTop' in selection && this.content) {
+	    // TODO: animated scroll
+	    this.content.scrollTop = selection.scrollTop;
+	  }
+	  if (selection.range) {
+	    util.setSelectionOffset(selection.range);
+	  }
+	  if (selection.dom) {
+	    selection.dom.focus();
+	  }
+	};
+
+	/**
+	 * Get the current focus
+	 * @return {Object} selection An object containing fields:
+	 *                            {Element | undefined} dom     The dom element
+	 *                                                          which has focus
+	 *                            {Range | TextRange} range     A text selection
+	 *                            {Number} scrollTop            Scroll position
+	 */
+	treemode.getSelection = function () {
+	  return {
+	    dom: domFocus,
+	    scrollTop: this.content ? this.content.scrollTop : 0,
+	    range: util.getSelectionOffset()
+	  };
+	};
+
+	/**
+	 * Adjust the scroll position such that given top position is shown at 1/4
+	 * of the window height.
+	 * @param {Number} top
+	 * @param {function(boolean)} [callback]   Callback, executed when animation is
+	 *                                         finished. The callback returns true
+	 *                                         when animation is finished, or false
+	 *                                         when not.
+	 */
+	treemode.scrollTo = function (top, callback) {
+	  var content = this.content;
+	  if (content) {
+	    var editor = this;
+	    // cancel any running animation
+	    if (editor.animateTimeout) {
+	      clearTimeout(editor.animateTimeout);
+	      delete editor.animateTimeout;
+	    }
+	    if (editor.animateCallback) {
+	      editor.animateCallback(false);
+	      delete editor.animateCallback;
+	    }
+
+	    // calculate final scroll position
+	    var height = content.clientHeight;
+	    var bottom = content.scrollHeight - height;
+	    var finalScrollTop = Math.min(Math.max(top - height / 4, 0), bottom);
+
+	    // animate towards the new scroll position
+	    var animate = function () {
+	      var scrollTop = content.scrollTop;
+	      var diff = (finalScrollTop - scrollTop);
+	      if (Math.abs(diff) > 3) {
+	        content.scrollTop += diff / 3;
+	        editor.animateCallback = callback;
+	        editor.animateTimeout = setTimeout(animate, 50);
+	      }
+	      else {
+	        // finished
+	        if (callback) {
+	          callback(true);
+	        }
+	        content.scrollTop = finalScrollTop;
+	        delete editor.animateTimeout;
+	        delete editor.animateCallback;
+	      }
+	    };
+	    animate();
+	  }
+	  else {
+	    if (callback) {
+	      callback(false);
+	    }
+	  }
+	};
+
+	/**
+	 * Create main frame
+	 * @private
+	 */
+	treemode._createFrame = function () {
+	  // create the frame
+	  this.frame = document.createElement('div');
+	  this.frame.className = 'jsoneditor';
+	  this.container.appendChild(this.frame);
+
+	  // create one global event listener to handle all events from all nodes
+	  var editor = this;
+	  function onEvent(event) {
+	    editor._onEvent(event);
+	  }
+	  this.frame.onclick = function (event) {
+	    var target = event.target;// || event.srcElement;
+
+	    onEvent(event);
+
+	    // prevent default submit action of buttons when editor is located
+	    // inside a form
+	    if (target.nodeName == 'BUTTON') {
+	      event.preventDefault();
+	    }
+	  };
+	  this.frame.oninput = onEvent;
+	  this.frame.onchange = onEvent;
+	  this.frame.onkeydown = onEvent;
+	  this.frame.onkeyup = onEvent;
+	  this.frame.oncut = onEvent;
+	  this.frame.onpaste = onEvent;
+	  this.frame.onmousedown = onEvent;
+	  this.frame.onmouseup = onEvent;
+	  this.frame.onmouseover = onEvent;
+	  this.frame.onmouseout = onEvent;
+	  // Note: focus and blur events do not propagate, therefore they defined
+	  // using an eventListener with useCapture=true
+	  // see http://www.quirksmode.org/blog/archives/2008/04/delegating_the.html
+	  util.addEventListener(this.frame, 'focus', onEvent, true);
+	  util.addEventListener(this.frame, 'blur', onEvent, true);
+	  this.frame.onfocusin = onEvent;  // for IE
+	  this.frame.onfocusout = onEvent; // for IE
+
+	  // create menu
+	  this.menu = document.createElement('div');
+	  this.menu.className = 'menu';
+	  this.frame.appendChild(this.menu);
+
+	  // create expand all button
+	  var expandAll = document.createElement('button');
+	  expandAll.className = 'expand-all';
+	  expandAll.title = 'Expand all fields';
+	  expandAll.onclick = function () {
+	    editor.expandAll();
+	  };
+	  this.menu.appendChild(expandAll);
+
+	  // create expand all button
+	  var collapseAll = document.createElement('button');
+	  collapseAll.title = 'Collapse all fields';
+	  collapseAll.className = 'collapse-all';
+	  collapseAll.onclick = function () {
+	    editor.collapseAll();
+	  };
+	  this.menu.appendChild(collapseAll);
+
+	  // create undo/redo buttons
+	  if (this.history) {
+	    // create undo button
+	    var undo = document.createElement('button');
+	    undo.className = 'undo separator';
+	    undo.title = 'Undo last action (Ctrl+Z)';
+	    undo.onclick = function () {
+	      editor._onUndo();
+	    };
+	    this.menu.appendChild(undo);
+	    this.dom.undo = undo;
+
+	    // create redo button
+	    var redo = document.createElement('button');
+	    redo.className = 'redo';
+	    redo.title = 'Redo (Ctrl+Shift+Z)';
+	    redo.onclick = function () {
+	      editor._onRedo();
+	    };
+	    this.menu.appendChild(redo);
+	    this.dom.redo = redo;
+
+	    // register handler for onchange of history
+	    this.history.onChange = function () {
+	      undo.disabled = !editor.history.canUndo();
+	      redo.disabled = !editor.history.canRedo();
+	    };
+	    this.history.onChange();
+	  }
+
+	  // create mode box
+	  if (this.options && this.options.modes && this.options.modes.length) {
+	    var modeBox = modeswitcher.create(this, this.options.modes, this.options.mode);
+	    this.menu.appendChild(modeBox);
+	    this.dom.modeBox = modeBox;
+	  }
+
+	  // create search box
+	  if (this.options.search) {
+	    this.searchBox = new SearchBox(this, this.menu);
+	  }
+	};
+
+	/**
+	 * Perform an undo action
+	 * @private
+	 */
+	treemode._onUndo = function () {
+	  if (this.history) {
+	    // undo last action
+	    this.history.undo();
+
+	    // trigger change callback
+	    if (this.options.change) {
+	      this.options.change();
+	    }
+	  }
+	};
+
+	/**
+	 * Perform a redo action
+	 * @private
+	 */
+	treemode._onRedo = function () {
+	  if (this.history) {
+	    // redo last action
+	    this.history.redo();
+
+	    // trigger change callback
+	    if (this.options.change) {
+	      this.options.change();
+	    }
+	  }
+	};
+
+	/**
+	 * Event handler
+	 * @param event
+	 * @private
+	 */
+	treemode._onEvent = function (event) {
+	  var target = event.target;
+
+	  if (event.type == 'keydown') {
+	    this._onKeyDown(event);
+	  }
+
+	  if (event.type == 'focus') {
+	    domFocus = target;
+	  }
+
+	  var node = Node.getNodeFromTarget(target);
+	  if (node) {
+	    node.onEvent(event);
+	  }
+	};
+
+	/**
+	 * Event handler for keydown. Handles shortcut keys
 	 * @param {Event} event
 	 * @private
 	 */
-	ContextMenu.prototype._onKeyDown = function (event) {
-	  var target = event.target;
-	  var keynum = event.which;
+	treemode._onKeyDown = function (event) {
+	  var keynum = event.which || event.keyCode;
+	  var ctrlKey = event.ctrlKey;
+	  var shiftKey = event.shiftKey;
 	  var handled = false;
-	  var buttons, targetIndex, prevButton, nextButton;
 
-	  if (keynum == 27) { // ESC
-	    // hide the menu on ESC key
+	  if (keynum == 9) { // Tab or Shift+Tab
+	    setTimeout(function () {
+	      // select all text when moving focus to an editable div
+	      util.selectContentEditable(domFocus);
+	    }, 0);
+	  }
 
-	    // restore previous selection and focus
-	    if (this.selection) {
-	      util.setSelection(this.selection);
-	    }
-	    if (this.anchor) {
-	      this.anchor.focus();
-	    }
-
-	    this.hide();
-
-	    handled = true;
-	  }
-	  else if (keynum == 9) { // Tab
-	    if (!event.shiftKey) { // Tab
-	      buttons = this._getVisibleButtons();
-	      targetIndex = buttons.indexOf(target);
-	      if (targetIndex == buttons.length - 1) {
-	        // move to first button
-	        buttons[0].focus();
-	        handled = true;
-	      }
-	    }
-	    else { // Shift+Tab
-	      buttons = this._getVisibleButtons();
-	      targetIndex = buttons.indexOf(target);
-	      if (targetIndex == 0) {
-	        // move to last button
-	        buttons[buttons.length - 1].focus();
-	        handled = true;
-	      }
-	    }
-	  }
-	  else if (keynum == 37) { // Arrow Left
-	    if (target.className == 'expand') {
-	      buttons = this._getVisibleButtons();
-	      targetIndex = buttons.indexOf(target);
-	      prevButton = buttons[targetIndex - 1];
-	      if (prevButton) {
-	        prevButton.focus();
-	      }
-	    }
-	    handled = true;
-	  }
-	  else if (keynum == 38) { // Arrow Up
-	    buttons = this._getVisibleButtons();
-	    targetIndex = buttons.indexOf(target);
-	    prevButton = buttons[targetIndex - 1];
-	    if (prevButton && prevButton.className == 'expand') {
-	      // skip expand button
-	      prevButton = buttons[targetIndex - 2];
-	    }
-	    if (!prevButton) {
-	      // move to last button
-	      prevButton = buttons[buttons.length - 1];
-	    }
-	    if (prevButton) {
-	      prevButton.focus();
-	    }
-	    handled = true;
-	  }
-	  else if (keynum == 39) { // Arrow Right
-	    buttons = this._getVisibleButtons();
-	    targetIndex = buttons.indexOf(target);
-	    nextButton = buttons[targetIndex + 1];
-	    if (nextButton && nextButton.className == 'expand') {
-	      nextButton.focus();
-	    }
-	    handled = true;
-	  }
-	  else if (keynum == 40) { // Arrow Down
-	    buttons = this._getVisibleButtons();
-	    targetIndex = buttons.indexOf(target);
-	    nextButton = buttons[targetIndex + 1];
-	    if (nextButton && nextButton.className == 'expand') {
-	      // skip expand button
-	      nextButton = buttons[targetIndex + 2];
-	    }
-	    if (!nextButton) {
-	      // move to first button
-	      nextButton = buttons[0];
-	    }
-	    if (nextButton) {
-	      nextButton.focus();
+	  if (this.searchBox) {
+	    if (ctrlKey && keynum == 70) { // Ctrl+F
+	      this.searchBox.dom.search.focus();
+	      this.searchBox.dom.search.select();
 	      handled = true;
 	    }
-	    handled = true;
+	    else if (keynum == 114 || (ctrlKey && keynum == 71)) { // F3 or Ctrl+G
+	      var focus = true;
+	      if (!shiftKey) {
+	        // select next search result (F3 or Ctrl+G)
+	        this.searchBox.next(focus);
+	      }
+	      else {
+	        // select previous search result (Shift+F3 or Ctrl+Shift+G)
+	        this.searchBox.previous(focus);
+	      }
+
+	      handled = true;
+	    }
 	  }
-	  // TODO: arrow left and right
+
+	  if (this.history) {
+	    if (ctrlKey && !shiftKey && keynum == 90) { // Ctrl+Z
+	      // undo
+	      this._onUndo();
+	      handled = true;
+	    }
+	    else if (ctrlKey && shiftKey && keynum == 90) { // Ctrl+Shift+Z
+	      // redo
+	      this._onRedo();
+	      handled = true;
+	    }
+	  }
 
 	  if (handled) {
-	    event.stopPropagation();
 	    event.preventDefault();
+	    event.stopPropagation();
 	  }
 	};
 
 	/**
-	 * Test if an element is a child of a parent element.
-	 * @param {Element} child
-	 * @param {Element} parent
-	 * @return {boolean} isChild
+	 * Create main table
+	 * @private
 	 */
-	ContextMenu.prototype._isChildOf = function (child, parent) {
-	  var e = child.parentNode;
-	  while (e) {
-	    if (e == parent) {
-	      return true;
-	    }
-	    e = e.parentNode;
-	  }
+	treemode._createTable = function () {
+	  var contentOuter = document.createElement('div');
+	  contentOuter.className = 'outer';
+	  this.contentOuter = contentOuter;
 
-	  return false;
+	  this.content = document.createElement('div');
+	  this.content.className = 'tree';
+	  contentOuter.appendChild(this.content);
+
+	  this.table = document.createElement('table');
+	  this.table.className = 'tree';
+	  this.content.appendChild(this.table);
+
+	  // create colgroup where the first two columns don't have a fixed
+	  // width, and the edit columns do have a fixed width
+	  var col;
+	  this.colgroupContent = document.createElement('colgroup');
+	  if (this.options.mode === 'tree') {
+	    col = document.createElement('col');
+	    col.width = "24px";
+	    this.colgroupContent.appendChild(col);
+	  }
+	  col = document.createElement('col');
+	  col.width = "24px";
+	  this.colgroupContent.appendChild(col);
+	  col = document.createElement('col');
+	  this.colgroupContent.appendChild(col);
+	  this.table.appendChild(this.colgroupContent);
+
+	  this.tbody = document.createElement('tbody');
+	  this.table.appendChild(this.tbody);
+
+	  this.frame.appendChild(contentOuter);
 	};
 
-	module.exports = ContextMenu;
-
+	// define modes
+	module.exports = [
+	  {
+	    mode: 'tree',
+	    mixin: treemode,
+	    data: 'json'
+	  },
+	  {
+	    mode: 'view',
+	    mixin: treemode,
+	    data: 'json'
+	  },
+	  {
+	    mode: 'form',
+	    mixin: treemode,
+	    data: 'json'
+	  }
+	];
 
 /***/ },
 /* 11 */
 /***/ function(module, exports, __webpack_require__) {
 
 	var util = __webpack_require__(3);
-	var ContextMenu = __webpack_require__(10);
+	var ContextMenu = __webpack_require__(1);
 
 	/**
 	 * A factory function to create an AppendNode, which depends on a Node
@@ -6239,13 +6475,13 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	    // TODO: consistent naming
 
+	    dom.tdDrag = document.createElement('td');
+	    var tdMenu = document.createElement('td');
+	    dom.tdMenu = tdMenu;
 	    if (this.editable.field) {
 	      // a cell for the dragarea column
-	      dom.tdDrag = document.createElement('td');
 
 	      // create context menu
-	      var tdMenu = document.createElement('td');
-	      dom.tdMenu = tdMenu;
 	      var menu = document.createElement('button');
 	      menu.className = 'contextmenu';
 	      menu.title = 'Click to open the actions menu (Ctrl+M)';

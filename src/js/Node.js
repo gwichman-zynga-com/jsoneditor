@@ -36,7 +36,8 @@ function Node (editor, params) {
 Node.prototype._updateEditability = function () {
   this.editable = {
     field: true,
-    value: true
+    value: true,
+    type: true
   };
 
   if (this.editor) {
@@ -47,16 +48,33 @@ Node.prototype._updateEditability = function () {
       var editable = this.editor.options.editable({
         field: this.field,
         value: this.value,
+        type: this.type,
         path: this.path()
       });
 
       if (typeof editable === 'boolean') {
         this.editable.field = editable;
         this.editable.value = editable;
+        this.editable.type = editable;
       }
       else {
         if (typeof editable.field === 'boolean') this.editable.field = editable.field;
         if (typeof editable.value === 'boolean') this.editable.value = editable.value;
+        if (typeof editable.type === 'boolean') {
+          this.editable.type = editable.type && editable.value;
+        } else {
+          this.editable.type = this.editable.value;
+        }
+        if (typeof editable.fieldName === 'boolean') {
+          this.editable.fieldName = editable.fieldName;
+        } else {
+          this.editable.fieldName = this.editable.field;
+        }
+        if (typeof editable.fieldMove === 'boolean') {
+          this.editable.fieldMove = editable.fieldMove;
+        } else {
+          this.editable.fieldMove = this.editable.field;
+        }
       }
     }
   }
@@ -1208,7 +1226,7 @@ Node.prototype.getDom = function() {
 
   if (this.editor.options.mode === 'tree') { // note: we take here the global setting
     var tdDrag = document.createElement('td');
-    if (this.editable.field) {
+    if (this.editable.fieldMove) {
       // create draggable area
       if (this.parent) {
         var domDrag = document.createElement('button');
@@ -1543,7 +1561,7 @@ Node.prototype.updateDom = function (options) {
   if (domField) {
     if (this.fieldEditable) {
       // parent is an object
-      domField.contentEditable = this.editable.field;
+      domField.contentEditable = this.editable.fieldName;
       domField.spellcheck = false;
       domField.className = 'field';
     }
@@ -2340,6 +2358,9 @@ Node.prototype._onChangeType = function (newType) {
  * @private
  */
 Node.prototype._onSort = function (direction) {
+  if (typeof direction == "undefined") {
+    direction = ((this.sort == 'asc') ? 'desc': 'asc');
+  }
   if (this._hasChilds()) {
     var order = (direction == 'desc') ? -1 : 1;
     var prop = (this.type == 'array') ? 'value': 'field';
@@ -2593,8 +2614,221 @@ Node.prototype.showContextMenu = function (anchor, onClose) {
   var node = this;
   var titles = Node.TYPE_TITLES;
   var items = [];
+  var amChild = this.parent && this.parent._hasChilds();
+  var amParent = this._hasChilds();
 
-  if (this.editable.value) {
+  var contextMenu = {
+    Type: {
+      context: node.editable.type,
+      title: 'Change the type of this field',
+      className: 'type-' + node.type,
+      submenu: [
+        {
+          text: 'Auto',
+          className: 'type-auto' +
+              (node.type == 'auto' ? ' selected' : ''),
+          title: titles.auto,
+          click: function () {
+            node._onChangeType('auto');
+          }
+        },
+        {
+          text: 'Array',
+          className: 'type-array' +
+              (node.type == 'array' ? ' selected' : ''),
+          title: titles.array,
+          click: function () {
+            node._onChangeType('array');
+          }
+        },
+        {
+          text: 'Object',
+          className: 'type-object' +
+              (node.type == 'object' ? ' selected' : ''),
+          title: titles.object,
+          click: function () {
+            node._onChangeType('object');
+          }
+        },
+        {
+          text: 'String',
+          className: 'type-string' +
+              (node.type == 'string' ? ' selected' : ''),
+          title: titles.string,
+          click: function () {
+            node._onChangeType('string');
+          }
+        }
+      ]
+    },
+    Sort: {
+      context: amParent,
+      title: 'Sort the childs of this ' + node.type,
+      className: 'sort-' + ((node.sort == 'asc') ? 'desc': 'asc'),
+      click: function () {
+        node._onSort();
+      },
+      submenu: [
+        {
+          text: 'Ascending',
+          className: 'sort-asc',
+          title: 'Sort the childs of this ' + node.type + ' in ascending order',
+          click: function () {
+            node._onSort('asc');
+          }
+        },
+        {
+          text: 'Descending',
+          className: 'sort-desc',
+          title: 'Sort the childs of this ' + node.type +' in descending order',
+          click: function () {
+            node._onSort('desc');
+          }
+        }
+      ]
+    },
+    Sep1: {
+      type: 'separator'
+    },
+    Append: {
+      context: amChild && (node == node.parent.childs[node.parent.childs.length - 1]),
+      title: 'Append a new field with type \'auto\' after this field (Ctrl+Shift+Ins)',
+      submenuTitle: 'Select the type of the field to be appended',
+      className: 'append',
+      click: function () {
+        node._onAppend('', '', 'auto');
+      },
+      submenu: [
+        {
+          text: 'Auto',
+          className: 'type-auto',
+          title: titles.auto,
+          click: function () {
+            node._onAppend('', '', 'auto');
+          }
+        },
+        {
+          text: 'Array',
+          className: 'type-array',
+          title: titles.array,
+          click: function () {
+            node._onAppend('', []);
+          }
+        },
+        {
+          text: 'Object',
+          className: 'type-object',
+          title: titles.object,
+          click: function () {
+            node._onAppend('', {});
+          }
+        },
+        {
+          text: 'String',
+          className: 'type-string',
+          title: titles.string,
+          click: function () {
+            node._onAppend('', '', 'string');
+          }
+        }
+      ]
+    },
+    Insert: {
+      context: amChild,
+      title: 'Insert a new field with type \'auto\' before this field (Ctrl+Ins)',
+      submenuTitle: 'Select the type of the field to be inserted',
+      className: 'insert',
+      click: function () {
+        node._onInsertBefore('', '', 'auto');
+      },
+      submenu: [
+        {
+          text: 'Auto',
+          className: 'type-auto',
+          title: titles.auto,
+          click: function () {
+            node._onInsertBefore('', '', 'auto');
+          }
+        },
+        {
+          text: 'Array',
+          className: 'type-array',
+          title: titles.array,
+          click: function () {
+            node._onInsertBefore('', []);
+          }
+        },
+        {
+          text: 'Object',
+          className: 'type-object',
+          title: titles.object,
+          click: function () {
+            node._onInsertBefore('', {});
+          }
+        },
+        {
+          text: 'String',
+          className: 'type-string',
+          title: titles.string,
+          click: function () {
+            node._onInsertBefore('', '', 'string');
+          }
+        }
+      ]
+    },
+    Duplicate: {
+      context: amChild && node.editable.field,
+      title: 'Duplicate this field (Ctrl+D)',
+      className: 'duplicate',
+      click: function () {
+        node._onDuplicate();
+      }
+    },
+    Remove: {
+      context: amChild && node.editable.field,
+      title: 'Remove this field (Ctrl+Del)',
+      className: 'remove',
+      click: function () {
+        node._onRemove();
+      }
+    }
+  };
+
+  if (typeof this.editor.options.contextMenu === 'function') {
+    var fieldInfo = {
+      field: node.field,
+      value: node.value,
+      type: node.type,
+      path: node.path()
+    };
+    this.editor.options.contextMenu(fieldInfo, contextMenu, node);
+  }
+
+  var needSeparator = false;
+  for (var name in contextMenu) {
+    var def = contextMenu[name];
+    if (def && def.type === 'separator' && items.length) {
+      needSeparator = true;
+    } else if (def && def.context) {
+      if (needSeparator) {
+        items.push({
+          type: 'separator'
+        });
+        needSeparator = false;
+      }
+      items.push({
+        text: name,
+        title: def.title,
+        className: def.className,
+        submenuTitle: def.submenuTitle,
+        submenu: def.submenu,
+        click: def.click
+      });
+    }
+  }
+
+/*
+  if (this.editable.type) {
     items.push({
       text: 'Type',
       title: 'Change the type of this field',
@@ -2793,6 +3027,7 @@ Node.prototype.showContextMenu = function (anchor, onClose) {
       });
     }
   }
+*/
 
   var menu = new ContextMenu(items, {close: onClose});
   menu.show(anchor);
