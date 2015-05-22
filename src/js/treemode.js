@@ -567,6 +567,19 @@ treemode._createFrame = function () {
     this.dom.modeBox = modeBox;
   }
 
+  if (this.options && typeof this.options.save === "function") {
+    var save = document.createElement('button');
+    save.className = 'save';
+    save.title = 'Save Changes (Ctrl-S)';
+    save.innerHTML = 'Save';
+    save.onclick = function () {
+      console.log("SAVE!");
+      editor.options.save(editor.get());
+    };
+    this.menu.appendChild(save);
+    this.dom.save = save;
+  }
+
   // create search box
   if (this.options.search) {
     this.searchBox = new SearchBox(this, this.menu);

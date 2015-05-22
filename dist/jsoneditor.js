@@ -24,7 +24,7 @@
  *
  * @author  Jos de Jong, <wjosdejong@gmail.com>
  * @version 4.2.0
- * @date    2015-05-21
+ * @date    2015-05-22
  */
 (function webpackUniversalModuleDefinition(root, factory) {
 	if(typeof exports === 'object' && typeof module === 'object')
@@ -6279,6 +6279,19 @@ return /******/ (function(modules) { // webpackBootstrap
 	    this.dom.modeBox = modeBox;
 	  }
 
+	  if (this.options && this.options.onSave) {
+	    var save = document.createElement('button');
+	    save.className = 'save';
+	    save.title = 'Save Changes (Ctrl-S)';
+	    save.innerHTML = 'Save';
+	    save.onclick = function () {
+	      console.log("SAVE!");
+	      editor.options.onSave(editor.get());
+	    };
+	    this.menu.appendChild(save);
+	    this.dom.save = save;
+	  }
+
 	  // create search box
 	  if (this.options.search) {
 	    this.searchBox = new SearchBox(this, this.menu);
@@ -6454,6 +6467,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    data: 'json'
 	  }
 	];
+
 
 /***/ },
 /* 11 */

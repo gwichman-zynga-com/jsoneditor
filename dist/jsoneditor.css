@@ -518,6 +518,12 @@
   background-position: -72px -120px;
 }
 
+.jsoneditor .menu button.save {
+  margin-left: 25px;
+  background-image: none;
+  width: 50px;
+}
+
 .jsoneditor .menu button.modes {
   background-image: none;
   width: auto;
