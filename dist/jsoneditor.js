@@ -24,7 +24,7 @@
  *
  * @author  Jos de Jong, <wjosdejong@gmail.com>
  * @version 4.2.0
- * @date    2015-05-20
+ * @date    2015-05-21
  */
 (function webpackUniversalModuleDefinition(root, factory) {
 	if(typeof exports === 'object' && typeof module === 'object')
@@ -1810,6 +1810,27 @@ return /******/ (function(modules) { // webpackBootstrap
 	}
 
 	/**
+	 * If the editor options include a validation function, make sure our value is valid
+	 * @private
+	 */
+	Node.prototype._validate = function () {
+	  if (!this.isAppendNode && this.editor && typeof this.editor.options.validate === 'function') {
+	    var validValue = this.editor.options.validate({
+	      field: this.field,
+	      type: this.type,
+	      oldValue: this.validValue,
+	      newValue: this.value,
+	      path: this.path()
+	    });
+	    if (typeof validValue == "undefined") {
+	      validValue = this.value;
+	    }
+	    this.value = this.validValue = validValue;
+	    return validValue;
+	  }
+	};
+
+	/**
 	 * Determine whether the field and/or value of this node are editable
 	 * @private
 	 */
@@ -1883,6 +1904,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	 */
 	Node.prototype.setParent = function(parent) {
 	  this.parent = parent;
+	  this._validate();
 	};
 
 	/**
@@ -2013,7 +2035,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	  }
 	  else {
 	    if (this.value === undefined) {
-	      this._getDomValue();
+	      this._getDomValue(false);
 	    }
 
 	    return this.value;
@@ -2789,13 +2811,16 @@ return /******/ (function(modules) { // webpackBootstrap
 	        var str = this._unescapeHTML(this.valueInnerText);
 	        value = this._stringCast(str);
 	      }
-	      if (value !== this.value) {
-	        var oldValue = this.value;
-	        this.value = value;
+	      var oldValue = this.value;
+	      this.value = value;
+	      if (!silent) {
+	        this._validate();
+	      }
+	      if (oldValue !== this.value) {
 	        this.editor._onAction('editValue', {
 	          'node': this,
 	          'oldValue': oldValue,
-	          'newValue': value,
+	          'newValue': this.value,
 	          'oldSelection': this.editor.selection,
 	          'newSelection': this.editor.getSelection()
 	        });
@@ -3032,6 +3057,10 @@ return /******/ (function(modules) { // webpackBootstrap
 	  var tdField = document.createElement('td');
 	  dom.tr.appendChild(tdField);
 	  dom.tree = this._createDomTree();
+	  if (typeof this.editor.options.modifyDom === 'function') {
+	    this.editor.options.modifyDom(this);
+	  }
+
 	  tdField.appendChild(dom.tree);
 
 	  this.updateDom({'updateIndexes': true});
@@ -3613,7 +3642,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	      case 'blur':
 	      case 'change':
-	        this._getDomValue(true);
+	        this._getDomValue(false);
 	        this._updateDomValue();
 	        if (this.value) {
 	          domValue.innerHTML = this._escapeHTML(this.value);
@@ -4587,10 +4616,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	  var needSeparator = false;
 	  for (var name in contextMenu) {
 	    var def = contextMenu[name];
-	    if (def && def.type === 'separator') {
+	    if (def && def.type === 'separator' && items.length) {
 	      needSeparator = true;
-	    }
-	    if (def && def.context) {
+	    } else if (def && def.context) {
 	      if (needSeparator) {
 	        items.push({
 	          type: 'separator'
@@ -6450,6 +6478,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    /** @type {TreeEditor} */
 	    this.editor = editor;
 	    this.dom = {};
+	    this.isAppendNode = true;
 	  }
 
 	  AppendNode.prototype = new Node();
@@ -6564,10 +6593,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	  AppendNode.prototype.showContextMenu = function (anchor, onClose) {
 	    var node = this;
 	    var titles = Node.TYPE_TITLES;
-	    var items = [
-	      // create append button
-	      {
-	        'text': 'Append',
+	    var contextMenu = {
+	      'Append': {
+	        'context': true,
 	        'title': 'Append a new field with type \'auto\' (Ctrl+Shift+Ins)',
 	        'submenuTitle': 'Select the type of the field to be appended',
 	        'className': 'insert',
@@ -6609,8 +6637,41 @@ return /******/ (function(modules) { // webpackBootstrap
 	          }
 	        ]
 	      }
-	    ];
+	    };
+	    var items = [];
 
+	    if (typeof this.editor.options.contextMenu === 'function') {
+	      var fieldInfo = {
+	        field: node.field,
+	        value: node.value,
+	        type: node.type,
+	        path: node.path()
+	      };
+	      this.editor.options.contextMenu(fieldInfo, contextMenu, node);
+	    }
+
+	    var needSeparator = false;
+	    for (var name in contextMenu) {
+	      var def = contextMenu[name];
+	      if (def && def.type === 'separator' && items.length) {
+	        needSeparator = true;
+	      } else if (def && def.context) {
+	        if (needSeparator) {
+	          items.push({
+	            type: 'separator'
+	          });
+	          needSeparator = false;
+	        }
+	        items.push({
+	          text: name,
+	          title: def.title,
+	          className: def.className,
+	          submenuTitle: def.submenuTitle,
+	          submenu: def.submenu,
+	          click: def.click
+	        });
+	      }
+	    }
 	    var menu = new ContextMenu(items, {close: onClose});
 	    menu.show(anchor);
 	  };

@@ -17,6 +17,7 @@ function appendNodeFactory(Node) {
     /** @type {TreeEditor} */
     this.editor = editor;
     this.dom = {};
+    this.isAppendNode = true;
   }
 
   AppendNode.prototype = new Node();
@@ -131,10 +132,9 @@ function appendNodeFactory(Node) {
   AppendNode.prototype.showContextMenu = function (anchor, onClose) {
     var node = this;
     var titles = Node.TYPE_TITLES;
-    var items = [
-      // create append button
-      {
-        'text': 'Append',
+    var contextMenu = {
+      'Append': {
+        'context': true,
         'title': 'Append a new field with type \'auto\' (Ctrl+Shift+Ins)',
         'submenuTitle': 'Select the type of the field to be appended',
         'className': 'insert',
@@ -176,8 +176,41 @@ function appendNodeFactory(Node) {
           }
         ]
       }
-    ];
+    };
+    var items = [];
 
+    if (typeof this.editor.options.contextMenu === 'function') {
+      var fieldInfo = {
+        field: node.field,
+        value: node.value,
+        type: node.type,
+        path: node.path()
+      };
+      this.editor.options.contextMenu(fieldInfo, contextMenu, node);
+    }
+
+    var needSeparator = false;
+    for (var name in contextMenu) {
+      var def = contextMenu[name];
+      if (def && def.type === 'separator' && items.length) {
+        needSeparator = true;
+      } else if (def && def.context) {
+        if (needSeparator) {
+          items.push({
+            type: 'separator'
+          });
+          needSeparator = false;
+        }
+        items.push({
+          text: name,
+          title: def.title,
+          className: def.className,
+          submenuTitle: def.submenuTitle,
+          submenu: def.submenu,
+          click: def.click
+        });
+      }
+    }
     var menu = new ContextMenu(items, {close: onClose});
     menu.show(anchor);
   };

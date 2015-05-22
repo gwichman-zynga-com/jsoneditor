@@ -30,6 +30,27 @@ function Node (editor, params) {
 }
 
 /**
+ * If the editor options include a validation function, make sure our value is valid
+ * @private
+ */
+Node.prototype._validate = function () {
+  if (!this.isAppendNode && this.editor && typeof this.editor.options.validate === 'function') {
+    var validValue = this.editor.options.validate({
+      field: this.field,
+      type: this.type,
+      oldValue: this.validValue,
+      newValue: this.value,
+      path: this.path()
+    });
+    if (typeof validValue == "undefined") {
+      validValue = this.value;
+    }
+    this.value = this.validValue = validValue;
+    return validValue;
+  }
+};
+
+/**
  * Determine whether the field and/or value of this node are editable
  * @private
  */
@@ -103,6 +124,7 @@ Node.prototype.path = function () {
  */
 Node.prototype.setParent = function(parent) {
   this.parent = parent;
+  this._validate();
 };
 
 /**
@@ -233,7 +255,7 @@ Node.prototype.getValue = function() {
   }
   else {
     if (this.value === undefined) {
-      this._getDomValue();
+      this._getDomValue(false);
     }
 
     return this.value;
@@ -1009,13 +1031,16 @@ Node.prototype._getDomValue = function(silent) {
         var str = this._unescapeHTML(this.valueInnerText);
         value = this._stringCast(str);
       }
-      if (value !== this.value) {
-        var oldValue = this.value;
-        this.value = value;
+      var oldValue = this.value;
+      this.value = value;
+      if (!silent) {
+        this._validate();
+      }
+      if (oldValue !== this.value) {
         this.editor._onAction('editValue', {
           'node': this,
           'oldValue': oldValue,
-          'newValue': value,
+          'newValue': this.value,
           'oldSelection': this.editor.selection,
           'newSelection': this.editor.getSelection()
         });
@@ -1252,6 +1277,10 @@ Node.prototype.getDom = function() {
   var tdField = document.createElement('td');
   dom.tr.appendChild(tdField);
   dom.tree = this._createDomTree();
+  if (typeof this.editor.options.modifyDom === 'function') {
+    this.editor.options.modifyDom(this);
+  }
+
   tdField.appendChild(dom.tree);
 
   this.updateDom({'updateIndexes': true});
@@ -1833,7 +1862,7 @@ Node.prototype.onEvent = function (event) {
 
       case 'blur':
       case 'change':
-        this._getDomValue(true);
+        this._getDomValue(false);
         this._updateDomValue();
         if (this.value) {
           domValue.innerHTML = this._escapeHTML(this.value);
